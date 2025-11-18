@@ -1,12 +1,14 @@
 "use client"
 import { useState } from 'react';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [emailError, setEmailError] = useState('');
+    const router = useRouter();
 
     const handleLogin = (e) => {
         e.preventDefault();
@@ -19,6 +21,8 @@ export default function LoginPage() {
 
         setEmailError('');
         console.log('Login attempted');
+        
+        router.push('/dashboard/my_tasks');
     };
 
     return (
