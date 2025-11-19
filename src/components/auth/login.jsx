@@ -19,10 +19,15 @@ export default function LoginPage() {
             return;
         }
 
-        setEmailError('');
-        console.log('Login attempted');
-        
-        router.push('/dashboard/my_tasks');
+        // Check credentials
+        if (email === 'shubham@yopmail.com' && password === 'admin@123') {
+            setEmailError('');
+            console.log('Login attempted');
+            router.push('/dashboard/my_tasks');
+        } else {
+            setEmailError('Invalid email or password');
+            return;
+        }
     };
 
     return (

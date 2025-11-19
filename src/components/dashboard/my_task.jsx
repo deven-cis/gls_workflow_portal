@@ -5,6 +5,7 @@ import { Menu, Calendar } from 'lucide-react';
 import TaskCard from '@/components/dashboard/TaskCard';
 import TaskSection from '@/components/dashboard/TaskSection';
 import EmptyState from '@/components/dashboard/EmptyState';
+import { CalendarView } from '@/components/dashboard/CalendarView';
 import { pendingTasks, upcomingTasks } from '@/components/dashboard/data/tasksData';
 
 export default function MyTasks() {
@@ -85,20 +86,12 @@ export default function MyTasks() {
 
                 {/* Conditional Rendering: List View, Calendar View, or Empty State */}
                 {activeView === 'calendar' ? (
-                    <div className="flex flex-col items-center justify-center py-12 md:py-16 lg:py-24">
-                        <div className="mb-6">
-                            <Calendar className="w-24 h-24 text-gray-300" />
-                        </div>
-                        <h3 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3 text-center">
-                            Calendar View
-                        </h3>
-                        <p className="text-xl text-gray-500 text-center max-w-md">
-                            Coming Soon
-                        </p>
-                        <p className="text-sm text-gray-400 text-center max-w-md mt-2">
-                            We're working on bringing you a beautiful calendar view to manage your tasks.
-                        </p>
-                    </div>
+                    <CalendarView
+                        variant="embed"
+                        showHero={false}
+                        enableWeekToggle={false}
+                        initialViewFilter="month"
+                    />
                 ) : hasTasks ? (
                     <div className="space-y-6">
                         {/* Pending Section */}

@@ -47,7 +47,7 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
 
                 {/* Navigation */}
                 <nav className="flex-1 px-3 py-4 space-y-1">
-                    <Link href="/dashboard/my-tasks">
+                    <Link href="/dashboard/my_tasks">
                         <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
                             isMyTasksActive 
                                 ? 'text-red-800 bg-red-50' 
