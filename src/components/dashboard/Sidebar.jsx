@@ -5,7 +5,6 @@ import { Menu, History, Settings, ChevronLeft, ChevronRight } from 'lucide-react
 
 export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
     const pathname = usePathname();
-    const isMyTasksActive = pathname === '/dashboard/my-tasks' || pathname.startsWith('/dashboard/task_details');
 
     return (
         <>
@@ -49,7 +48,7 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
                 <nav className="flex-1 px-3 py-4 space-y-1">
                     <Link href="/dashboard/my_tasks">
                         <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
-                            isMyTasksActive 
+                            pathname === '/dashboard/my_tasks' || pathname.startsWith('/dashboard/task-details')
                                 ? 'text-red-800 bg-red-50' 
                                 : 'text-gray-600 hover:bg-gray-50'
                         }`}>
@@ -60,22 +59,34 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
                         </button>
                     </Link>
 
-                    <button className="w-full flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
-                        <History className="w-5 h-5 flex-shrink-0" />
-                        {!isSidebarCollapsed && (
-                            <span className="text-sm">History</span>
-                        )}
-                    </button>
+                    <Link href="/dashboard/history">
+                        <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
+                            pathname === '/dashboard/history'
+                                ? 'text-red-800 bg-red-50' 
+                                : 'text-gray-600 hover:bg-gray-50'
+                        }`}>
+                            <History className="w-5 h-5 flex-shrink-0" />
+                            {!isSidebarCollapsed && (
+                                <span className="text-sm">History</span>
+                            )}
+                        </button>
+                    </Link>
                 </nav>
 
                 {/* Settings */}
                 <div className="border-t border-gray-100 p-3">
-                    <button className="w-full flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors">
+                <Link href="/dashboard/settings">   
+                    <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
+                        pathname === '/dashboard/settings'
+                            ? 'text-red-800 bg-red-50' 
+                            : 'text-gray-600 hover:bg-gray-50'
+                    }`}>
                         <Settings className="w-5 h-5 flex-shrink-0" />
                         {!isSidebarCollapsed && (
                             <span className="text-sm">Settings</span>
                         )}
                     </button>
+                </Link>
                 </div>
 
                 {/* Expand Button (when collapsed) */}
