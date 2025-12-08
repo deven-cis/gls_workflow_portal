@@ -35,6 +35,15 @@ yarn-error.log*
 # explicit local env files
 .env.local
 
+# Documentation and local docs generated during development
+# Ignoring internal docs related to architecture, refactor notes, quick start, and environment helpers
+ARCHITECTURE.md
+ENVIRONMENT.md
+QUICK_START.md
+TESTING_GUIDE.md
+REFACTOR_SUMMARY.md
+COMPLETION_SUMMARY.md
+
 # vercel
 .vercel
 

@@ -1,8 +1,6 @@
 import MyTasks from '@/components/dashboard/my_task';
 
-export default async function MyTasksPage() {
-    return (
-        <MyTasks />
-    );
+export default function MyTasksPage() {
+        return <MyTasks />;
 }
 
