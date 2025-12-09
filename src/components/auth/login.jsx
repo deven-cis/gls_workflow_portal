@@ -2,31 +2,55 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { authAPI } from '@/services/api';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [emailError, setEmailError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
+        setEmailError('');
+        setIsLoading(true);
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
-            setEmailError('Wrong Email Address');
+            setEmailError('Please enter a valid email address');
+            setIsLoading(false);
             return;
         }
 
-        // Check credentials
-        if (email === 'shubham@yopmail.com' && password === 'admin@123') {
-            setEmailError('');
-            console.log('Login attempted');
-            router.push('/dashboard/my_tasks');
-        } else {
+        try {
+            console.log('Attempting login with username:', email);
+            const response = await authAPI.login(email, password);
+            console.log('Login response:', response);
+            
+            if (response.access_token) {
+                console.log('Login successful, storing tokens');
+                // Store the access token in localStorage
+                localStorage.setItem('access_token', response.access_token);
+                
+                // If there's a refresh token, store it as well
+                if (response.refresh_token) {
+                    localStorage.setItem('refresh_token', response.refresh_token);
+                }
+                
+                // Redirect to dashboard on successful login
+                console.log('Redirecting to dashboard...');
+                router.push('/dashboard/my_tasks');
+            } else {
+                console.log('No access token in response');
+                throw new Error('No access token received');
+            }
+        } catch (err) {
+            console.log('Login error:', err);
             setEmailError('Invalid email or password');
-            return;
+        } finally {
+            setIsLoading(false);
         }
     };
 

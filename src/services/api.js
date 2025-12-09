@@ -1,26 +1,19 @@
-// API Service Layer for FastAPI Backend Integration
-// All API calls go through this service for easy backend integration
 
-// Resolve API base URL:
-// - If NEXT_PUBLIC_API_URL provided, ensure it points to the API root (append `/api` if missing)
-// - Otherwise default to relative `/api` so the built-in Next.js mock routes are used during dev
-let API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
-if (API_BASE_URL) {
-  // strip trailing slashes
-  API_BASE_URL = API_BASE_URL.replace(/\/+$/, '');
-  // append `/api` if it's not already present
-  if (!API_BASE_URL.endsWith('/api')) {
-    API_BASE_URL = `${API_BASE_URL}/api`;
-  }
-} else {
-  API_BASE_URL = '/api';
-}
+// FastAPI server URL - update this to your FastAPI server address
+const FASTAPI_URL = 'http://127.0.0.1:8000';
+
+let API_BASE_URL = FASTAPI_URL;
+
 
 /**
  * Generic fetch wrapper with error handling
  */
 const apiCall = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
+  
+  // Get the access token from localStorage
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -28,6 +21,11 @@ const apiCall = async (endpoint, options = {}) => {
     },
     ...options,
   };
+
+  // Add Authorization header if token exists
+  if (token) {
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
 
   try {
     const response = await fetch(url, config);
@@ -42,6 +40,16 @@ const apiCall = async (endpoint, options = {}) => {
       } catch (err) {
         // fall through, body remains text
       }
+    }
+
+    // Handle 403 Forbidden - redirect to login
+    if (response.status === 403) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/auth/login';
+      }
+      return;
     }
 
     if (!response.ok) {
@@ -63,6 +71,31 @@ const apiCall = async (endpoint, options = {}) => {
 /**
  * Task API endpoints
  */
+/**
+ * Mapper function to convert backend job response to frontend task format
+ */
+const mapJobToTask = (job) => {
+  const jobDate = new Date(job.job_date);
+  const dateStr = jobDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const timeStr = job.start_time ? job.start_time.substring(0, 5) : '00:00';
+  
+  return {
+    id: job.job_no,
+    jobId: `Job${job.job_no}`,
+    date: dateStr,
+    time: `${timeStr}`,
+    title: job.case?.case_short_name || `Job #${job.job_no}`,
+    location: job.zoom_meeting_id ? 'Virtual - Zoom' : `${job.job_loc_name || ''}, ${job.job_loc_city || ''}`,
+    status: job.computed_status || job.status,
+    caseNo: job.case_no,
+    caseName: job.case?.case_short_name,
+    caseType: job.case?.case_type,
+    details: job.scheduling_notes_html || job.confirmation_notes_html || '',
+    isVirtual: !!job.zoom_meeting_id,
+    zoomMeetingId: job.zoom_meeting_id,
+  };
+};
+
 export const taskAPI = {
   // Get all tasks
   getTasks: async (filters = {}) => {
@@ -75,14 +108,17 @@ export const taskAPI = {
     return apiCall(`/tasks/${taskId}`);
   },
 
-  // Get pending tasks
+  // Get pending tasks from backendx`
   getPendingTasks: async () => {
-    return apiCall('/tasks?status=pending');
+    const response = await apiCall('/jobs/pending/');
+    return Array.isArray(response) ? response.map(mapJobToTask) : [];
   },
 
-  // Get upcoming tasks
+  // Get upcoming tasks from backend
   getUpcomingTasks: async () => {
-    return apiCall('/tasks?status=upcoming');
+    const response = await apiCall('/jobs/upcoming/');
+    // Map backend response to frontend format
+    return Array.isArray(response) ? response.map(mapJobToTask) : [];
   },
 
   // Create new task
@@ -127,21 +163,40 @@ export const taskAPI = {
  * Auth API endpoints
  */
 export const authAPI = {
-  login: async (email, password) => {
-    return apiCall('/auth/login', {
+  login: async (login_name, login_password) => {
+    return apiCall('/api/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ login_name, login_password }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
   },
 
-  logout: async () => {
-    return apiCall('/auth/logout', {
-      method: 'POST',
-    });
+  logout: () => {
+    // Clear tokens from localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+    }
+    return Promise.resolve();
   },
 
   getProfile: async () => {
-    return apiCall('/auth/profile');
+    return apiCall('/auth/users/me');
+  },
+
+  refreshToken: async (refreshToken) => {
+    return apiCall('/auth/token/refresh', {
+      method: 'POST',
+      body: new URLSearchParams({
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
   },
 };
 

@@ -20,14 +20,10 @@ export const metadata = {
   keywords: ["GLS", "workflow", "portal", "management"],
 };
 
-export default function RootLayout({ children }) {
+export default function AuthLayout({ children }) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
-    </html>
+    <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      {children}
+    </div>
   );
 }

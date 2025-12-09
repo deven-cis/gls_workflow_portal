@@ -2,17 +2,44 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Menu, Calendar } from 'lucide-react';
+import AvatarMenu from '@/components/AvatarMenu';
 import TaskCard from '@/components/dashboard/TaskCard';
 import TaskSection from '@/components/dashboard/TaskSection';
 import EmptyState from '@/components/dashboard/EmptyState';
 import { CalendarView } from '@/components/dashboard/CalendarView';
-import { pendingTasks, upcomingTasks } from '@/components/dashboard/data/tasksData';
+import { taskAPI } from '@/services/api';
 
 export default function MyTasks() {
     const [activeView, setActiveView] = useState('list');
-    const [hasTasks, setHasTasks] = useState(true);
     const [selectedTaskId, setSelectedTaskId] = useState(null);
+    const [pendingTasks, setPendingTasks] = useState([]);
+    const [upcomingTasks, setUpcomingTasks] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
     const searchParams = useSearchParams();
+
+    // Load tasks from backend APIs
+    useEffect(() => {
+        const loadTasks = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const [pending, upcoming] = await Promise.all([
+                    taskAPI.getPendingTasks(),
+                    taskAPI.getUpcomingTasks(),
+                ]);
+                setPendingTasks(pending || []);
+                setUpcomingTasks(upcoming || []);
+            } catch (err) {
+                console.log('Failed to load tasks:', err);
+                setError('Failed to load tasks. Please try again.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadTasks();
+    }, []);
 
     useEffect(() => {
         const taskId = searchParams.get('selected');
@@ -25,23 +52,11 @@ export default function MyTasks() {
         setSelectedTaskId(taskId);
     };
 
+    const hasTasks = pendingTasks.length > 0 || upcomingTasks.length > 0;
+
     return (
         <>
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-                <div className="px-4 md:px-6 lg:px-8 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-lg md:text-xl font-bold text-gray-900">
-                            My Tasks
-                        </h1>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">
-                            JK
-                        </div>
-                    </div>
-                </div>
-            </header>
+            {/* Header is provided globally via `Header` in `LayoutWrapper` */}
 
             {/* Content Area */}
             <div className="px-4 md:px-6 lg:px-8 py-4 md:py-6">
@@ -85,42 +100,60 @@ export default function MyTasks() {
                 </div>
 
                 {/* Conditional Rendering: List View, Calendar View, or Empty State */}
-                {activeView === 'calendar' ? (
+                {loading && (
+                    <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+                    </div>
+                )}
+
+                {error && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                        <p className="font-medium">Error loading tasks</p>
+                        <p className="text-sm">{error}</p>
+                    </div>
+                )}
+
+                {!loading && !error && activeView === 'calendar' ? (
                     <CalendarView
                         variant="embed"
                         showHero={false}
                         enableWeekToggle={false}
                         initialViewFilter="month"
                     />
-                ) : hasTasks ? (
+                ) : !loading && !error && hasTasks ? (
                     <div className="space-y-6">
                         {/* Pending Section */}
-                        <TaskSection title="Pending" count={pendingTasks.length}>
-                            {pendingTasks.map((task, index) => (
-                                <TaskCard
-                                    key={task.id}
-                                    task={task}
-                                    isSelected={selectedTaskId === task.id}
-                                    onSelect={handleTaskSelect}
-                                />
-                            ))}
-                        </TaskSection>
+                        {pendingTasks.length > 0 && (
+                            <TaskSection title="Pending" count={pendingTasks.length}>
+                                {pendingTasks.map((task) => (
+                                    <TaskCard
+                                        key={task.id}
+                                        task={task}
+                                        isSelected={selectedTaskId === task.id}
+                                        onSelect={handleTaskSelect}
+                                    />
+                                ))}
+                            </TaskSection>
+                        )}
 
                         {/* Upcoming Section */}
-                        <TaskSection title="Upcoming" count={upcomingTasks.length}>
-                            {upcomingTasks.map((task, index) => (
-                                <TaskCard
-                                    key={task.id}
-                                    task={task}
-                                    isSelected={selectedTaskId === task.id}
-                                    onSelect={handleTaskSelect}
-                                />
-                            ))}
-                        </TaskSection>
+                        {upcomingTasks.length > 0 && (
+                            <TaskSection title="Upcoming" count={upcomingTasks.length}>
+                                {upcomingTasks.map((task) => (
+                                    console.log('Rendering upcoming task:', task),
+                                    <TaskCard
+                                        key={task.id}
+                                        task={task}
+                                        isSelected={selectedTaskId === task.id}
+                                        onSelect={handleTaskSelect}
+                                    />
+                                ))}
+                            </TaskSection>
+                        )}
                     </div>
-                ) : (
+                ) : !loading && !error ? (
                     <EmptyState />
-                )}
+                ) : null}
             </div>
         </>
     );

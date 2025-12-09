@@ -6,7 +6,7 @@ const mockTasks = {
     id: 'pending-1',
     date: '21 May',
     time: '11:00 AM',
-    title: 'Federal Deposition - Daniels v. IRS',
+    title: 'Federal',
     location: '123 Oak St NE, Atlanta, GA',
     jobId: 'Job001',
     status: 'videos-pending',

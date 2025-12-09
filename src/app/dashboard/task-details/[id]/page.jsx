@@ -1,7 +1,8 @@
 "use client";
 import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, MapPin, Clock, MoreVertical, ChevronDown, ChevronUp, LogOut, Trash2, Clock as ClockIcon, Check, Search } from 'lucide-react';
+import { MapPin, Clock, MoreVertical, ChevronDown, ChevronUp, Trash2, Clock as ClockIcon, Check, Search } from 'lucide-react';
+import AvatarMenu from '@/components/AvatarMenu';
 import { createAttorneySection, getInitials } from '@/lib/utils';
 import TimeInput from '@/components/task/TimeInput';
 import AddActionButton from '@/components/task/AddActionButton';
@@ -20,7 +21,6 @@ export default function TaskDetails() {
     const router = useRouter();
     const [expandedStep, setExpandedStep] = useState(1);
     const [completedSteps, setCompletedSteps] = useState([]);
-    const [showLogoutMenu, setShowLogoutMenu] = useState(false);
     const [formData, setFormData] = useState({
         caseName: 'Johnson vs. Smith Deposition',
         caseNumber: '72364'
@@ -280,61 +280,12 @@ export default function TaskDetails() {
         });
     };
 
-    const handleLogout = () => {
-        setShowLogoutMenu(false);
-        router.push('/');
-    };
 
     const progress = Math.round((completedSteps.length / steps.length) * 100);
 
-    const handleBack = () => {
-        router.push(`/dashboard/my_tasks`);
-    };
-
     return (
         <>
-            {/* Header */}
-            <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-                <div className="px-4 md:px-6 lg:px-8 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <button
-                            onClick={handleBack}
-                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                        >
-                            <ArrowLeft className="w-5 h-5 text-gray-600" />
-                        </button>
-                        <h1 className="text-lg md:text-xl font-bold text-gray-900">
-                            Task Details
-                        </h1>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-600">Sep 24, 2025</span>
-                        <span className="text-sm font-medium text-gray-900">10:00 AM</span>
-                        <div className="relative" onClick={(e) => e.stopPropagation()}>
-                            <button
-                                onClick={() => setShowLogoutMenu(!showLogoutMenu)}
-                                className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm hover:shadow-lg transition-shadow"
-                            >
-                                JK
-                            </button>
-                            {showLogoutMenu && (
-                                <>
-                                    <div className="fixed inset-0 z-40" onClick={() => setShowLogoutMenu(false)} />
-                                    <div className="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                                        <button
-                                            onClick={handleLogout}
-                                            className="w-full flex items-center gap-2 px-4 py-3 text-gray-700 hover:bg-gray-50 transition-colors text-sm font-medium"
-                                        >
-                                            <LogOut className="w-4 h-4 text-red-600" />
-                                            <span className="text-red-600">Logout</span>
-                                        </button>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </header>
+            {/* Header is provided globally via `Header` in `LayoutWrapper` */}
 
             {/* Main Content */}
             <div className="flex h-[calc(100vh-73px)]">

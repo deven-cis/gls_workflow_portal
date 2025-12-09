@@ -52,7 +52,7 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                 {/* Task Details Column */}
                 <div className="flex-1 min-w-0">
                     <h3 className={`${isSelected ? 'text-xl md:text-2xl' : 'text-base md:text-lg'} font-bold mb-2 ${isHighlighted || isSelected ? 'text-white' : 'text-gray-900'}`}>
-                        {task.title}
+                        {task.caseType}: {task.title}
                     </h3>
                     <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm">
                         {task.location && (

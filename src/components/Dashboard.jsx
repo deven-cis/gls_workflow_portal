@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 import { Menu, Calendar } from 'lucide-react';
+import AvatarMenu from '@/components/AvatarMenu';
 import { useTasks } from '@/hooks/useTasks';
 
 /**
@@ -33,15 +34,7 @@ export default function Dashboard() {
 
   return (
     <>
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-30">
-        <div className="px-4 md:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <h1 className="text-lg md:text-xl font-bold text-gray-900">My Tasks</h1>
-          <div className="w-9 h-9 md:w-10 md:h-10 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">
-            JK
-          </div>
-        </div>
-      </header>
+      {/* Header is provided globally via `Header` in `LayoutWrapper` */}
 
       {/* Content Area */}
       <div className="px-4 md:px-6 lg:px-8 py-4 md:py-6">
