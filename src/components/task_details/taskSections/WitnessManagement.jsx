@@ -1,6 +1,6 @@
 import React from 'react';
-import TimeInput from '@/components/task/TimeInput';
-import AddActionButton from '@/components/task/AddActionButton';
+import TimeInput from '@/components/task_details/task/TimeInput';
+import AddActionButton from '@/components/task_details/task/AddActionButton';
 import { Trash2 } from 'lucide-react';
 
 export default function WitnessManagement({

@@ -1,5 +1,5 @@
 import "./globals.css";
-import LayoutWrapper from '@/components/dashboard/LayoutWrapper';
+import LayoutWrapper from '@/components/layouts/LayoutWrapper';
 
 
 export const metadata = {

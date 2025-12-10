@@ -1,5 +1,5 @@
 import React from 'react';
-import DocumentUpload from '@/components/task/DocumentUpload';
+import DocumentUpload from '@/components/task_details/task/DocumentUpload';
 import { Trash2 } from 'lucide-react';
 
 export default function AttorneyOrders({

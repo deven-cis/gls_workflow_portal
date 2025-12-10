@@ -1,9 +1,9 @@
-"use client";
+// "use client";
 
-import { CalendarView } from "@/components/dashboard/CalendarView";
+// import { CalendarView } from "@/components/dashboard/CalendarView";
 
-export default function CalendarPage() {
-    return <CalendarView />;
-}
+// export default function CalendarPage() {
+//     return <CalendarView />;
+// }
 
 

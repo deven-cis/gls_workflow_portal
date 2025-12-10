@@ -1,7 +1,7 @@
 import React from 'react';
-import ToggleOption from '@/components/task/ToggleOption';
-import IconInput from '@/components/task/IconInput';
-import DocumentUpload from '@/components/task/DocumentUpload';
+import ToggleOption from '@/components/task_details/task/ToggleOption';
+import IconInput from '@/components/task_details/task/IconInput';
+import DocumentUpload from '@/components/task_details/task/DocumentUpload';
 
 export default function BillingInfo({ billingInfo, handleBillingToggle, handleBillingInputChange, handleBillingUpload, handleBillingDocumentRemove }) {
     return (

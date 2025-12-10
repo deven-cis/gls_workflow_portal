@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { LockKeyhole } from "lucide-react";
-import AvatarMenu from '@/components/AvatarMenu';
+import AvatarMenu from '@/components/layouts/AvatarMenu';
 
 export default function SettingPage() {
   const [showPasswordModal, setShowPasswordModal] = useState(false);

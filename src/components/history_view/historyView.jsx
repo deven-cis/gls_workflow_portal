@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
 import { MapPin, Video, MoreVertical, ChevronDown, Menu, Calendar, ChevronLeft, ChevronRight, X, Download, Clock, Pencil } from 'lucide-react';
-import AvatarMenu from '@/components/AvatarMenu';
+import AvatarMenu from '@/components/layouts/AvatarMenu';
 
 const sampleHistory = [
     {

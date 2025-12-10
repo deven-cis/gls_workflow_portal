@@ -1,7 +1,7 @@
 import React from 'react';
-import CheckboxOption from '@/components/task/CheckboxOption';
-import IconInput from '@/components/task/IconInput';
-import DocumentUpload from '@/components/task/DocumentUpload';
+import CheckboxOption from '@/components/task_details/task/CheckboxOption';
+import IconInput from '@/components/task_details/task/IconInput';
+import DocumentUpload from '@/components/task_details/task/DocumentUpload';
 
 export default function EquipmentSection({ equipmentInfo, handleEquipmentCheckbox, handleEquipmentInputChange, handleEquipmentUpload, handleEquipmentDocumentRemove }) {
     return (

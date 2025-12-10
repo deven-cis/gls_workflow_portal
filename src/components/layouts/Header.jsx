@@ -3,7 +3,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Clock } from 'lucide-react';
-import AvatarMenu from '@/components/AvatarMenu';
+import AvatarMenu from '@/components/layouts/AvatarMenu';
 
 export default function Header() {
     const pathname = usePathname();
@@ -12,7 +12,7 @@ export default function Header() {
     const title = useMemo(() => {
         if (!pathname) return '';
         if (pathname.startsWith('/dashboard/task-details')) return 'Task Details';
-        if (pathname === '/dashboard' || pathname === '/dashboard/my_tasks') return 'My Tasks';
+        if (pathname === '/dashboard' || pathname === '/dashboard/list_of_tasks') return 'My Tasks';
         if (pathname.startsWith('/dashboard/history')) return 'History';
         if (pathname.startsWith('/dashboard/settings')) return 'Settings';
         if (pathname.startsWith('/auth')) return '';
@@ -26,7 +26,7 @@ export default function Header() {
         try {
             router.back();
         } catch (e) {
-            router.push('/dashboard/my_tasks');
+            router.push('/dashboard/list_of_tasks');
         }
     };
 

@@ -1,4 +1,4 @@
-import HistoryView from '@/components/dashboard/historyView';
+import HistoryView from '@/components/history_view/historyView.jsx';
 
 export default async function HistoryPage() {
     return (

@@ -2,11 +2,11 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Menu, Calendar } from 'lucide-react';
-import AvatarMenu from '@/components/AvatarMenu';
-import TaskCard from '@/components/dashboard/TaskCard';
-import TaskSection from '@/components/dashboard/TaskSection';
-import EmptyState from '@/components/dashboard/EmptyState';
-import { CalendarView } from '@/components/dashboard/CalendarView';
+import AvatarMenu from '@/components/layouts/AvatarMenu';
+import TaskCard from '@/components/list_of_tasks/TaskCard';
+import TaskSection from '@/components/list_of_tasks/TaskSection';
+import EmptyState from '@/components/empty_state/EmptyState';
+import { CalendarView } from '@/components/calendar_view/CalendarView';
 import { taskAPI } from '@/services/api';
 
 export default function MyTasks() {
@@ -114,12 +114,14 @@ export default function MyTasks() {
                 )}
 
                 {!loading && !error && activeView === 'calendar' ? (
-                    <CalendarView
-                        variant="embed"
-                        showHero={false}
-                        enableWeekToggle={false}
-                        initialViewFilter="month"
-                    />
+                    // <CalendarView
+                    //     variant="embed"
+                    //     showHero={false}
+                    //     enableWeekToggle={false}
+                    //     initialViewFilter="month"
+                    // /> 
+                    <EmptyState />
+
                 ) : !loading && !error && hasTasks ? (
                     <div className="space-y-6">
                         {/* Pending Section */}

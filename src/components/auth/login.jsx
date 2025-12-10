@@ -41,7 +41,7 @@ export default function LoginPage() {
                 
                 // Redirect to dashboard on successful login
                 console.log('Redirecting to dashboard...');
-                router.push('/dashboard/my_tasks');
+                router.push('/dashboard/list_of_tasks');
             } else {
                 console.log('No access token in response');
                 throw new Error('No access token received');

@@ -46,9 +46,9 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
 
                 {/* Navigation */}
                 <nav className="flex-1 px-3 py-4 space-y-1">
-                    <Link href="/dashboard/my_tasks">
+                    <Link href="/dashboard/list_of_tasks">
                         <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
-                            pathname === '/dashboard/my_tasks' || pathname.startsWith('/dashboard/task-details')
+                            pathname === '/dashboard/list_of_tasks' || pathname.startsWith('/dashboard/task-details')
                                 ? 'text-red-800 bg-red-50' 
                                 : 'text-gray-600 hover:bg-gray-50'
                         }`}>
