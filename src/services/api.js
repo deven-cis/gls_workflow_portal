@@ -13,7 +13,7 @@ const apiCall = async (endpoint, options = {}) => {
   
   // Get the access token from localStorage
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-  
+  console.log('Token:', token);
   const config = {
     headers: {
       'Content-Type': 'application/json',
@@ -88,8 +88,12 @@ const mapJobToTask = (job) => {
     location: job.zoom_meeting_id ? 'Virtual - Zoom' : `${job.job_loc_name || ''}, ${job.job_loc_city || ''}`,
     status: job.computed_status || job.status,
     caseNo: job.case_no,
-    caseName: job.case?.case_short_name,
-    caseType: job.case?.case_type,
+    caseInfo: {
+      id: job.case?.id,
+      name: job.case?.case_short_name,
+      caseNumber: job.case?.case_number,
+    },
+    type: job.case?.case_type,
     details: job.scheduling_notes_html || job.confirmation_notes_html || '',
     isVirtual: !!job.zoom_meeting_id,
     zoomMeetingId: job.zoom_meeting_id,
@@ -104,8 +108,19 @@ export const taskAPI = {
   },
 
   // Get task by ID
-  getTaskById: async (taskId) => {
-    return apiCall(`/tasks/${taskId}`);
+  getCaseById: async (caseId) => {
+    const data = await apiCall(`/case/get/${caseId}`);
+    console.log('Case data:', data);
+    return data;
+  },
+
+  editCase: async (caseId, caseData) => {
+    const data = await apiCall(`/case/edit/${caseId}`, {
+      method: 'PUT',
+      body: JSON.stringify(caseData),
+    });
+    console.log('Edited case data:', data);
+    return data;
   },
 
   // Get pending tasks from backendx`

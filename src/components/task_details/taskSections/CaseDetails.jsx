@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function CaseDetails({ formData, onChange }) {
     
-
+    console.log('CaseDetails formData:', formData);
     return (
         <div className="grid grid-cols-2 gap-4">
             <div>

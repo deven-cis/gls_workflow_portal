@@ -1,5 +1,5 @@
 "use client";
-import { useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { MapPin, Clock, MoreVertical, ChevronDown, ChevronUp, Trash2, Clock as ClockIcon, Check, Search } from 'lucide-react';
 import AvatarMenu from '@/components/layouts/AvatarMenu';
@@ -15,17 +15,17 @@ import WitnessManagement from '@/components/task_details/taskSections/WitnessMan
 import AttorneyOrders from '@/components/task_details/taskSections/AttorneyOrders';
 import BillingInfo from '@/components/task_details/taskSections/BillingInfo';
 import EquipmentSection from '@/components/task_details/taskSections/EquipmentSection';
+import { taskAPI } from '@/services/api';
 
-export default function TaskDetails({ taskId }) {
+export default function TaskDetails({ caseId, caseInfo }) {
     const params = useParams();
-    console.log('TaskDetails page mounted with params:', taskId);
+    console.log('TaskDetails page mounted with params:', caseId, caseInfo);
     const router = useRouter();
     const [expandedStep, setExpandedStep] = useState(1);
     const [completedSteps, setCompletedSteps] = useState([]);
-    const [formData, setFormData] = useState({
-        caseName: 'Johnson vs. Smith Deposition',
-        caseNumber: '72364'
-    });
+    const [formData, setFormData] = useState({ caseName: '', caseNumber: '' });
+    const [isCaseEdited, setIsCaseEdited] = useState(false);
+    const lastSavedRef = useRef({ caseName: '', caseNumber: '' })
     const [witnesses, setWitnesses] = useState([]);
     const [addingWitness, setAddingWitness] = useState(false);
     const [newWitnessName, setNewWitnessName] = useState('');
@@ -35,6 +35,63 @@ export default function TaskDetails({ taskId }) {
     const [attorneySections, setAttorneySections] = useState([
         createAttorneySection('Taking Attorney')
     ]);
+
+    // sync when caseInfo arrives
+    useEffect(() => {
+        if (!caseInfo) return;
+        const next = {
+        caseName: caseInfo.case_short_name ?? '',
+        caseNumber: caseInfo.case_number ?? ''
+        };
+        setFormData(next);
+        lastSavedRef.current = next;
+        setIsCaseEdited(false);
+    }, [caseInfo]);
+  
+    const handleCaseFormChange = (next) => {
+        setFormData(next);
+        // only mark dirty if different from last saved snapshot
+        const prev = lastSavedRef.current;
+        if (next.caseName !== prev.caseName || next.caseNumber !== prev.caseNumber) {
+        setIsCaseEdited(true);
+        }
+    };
+
+    // autosave with dedupe + longer debounce (e.g., 2500ms)
+    useEffect(() => {
+        if (!caseId || !isCaseEdited) return;
+    
+            const payload = {
+            case_short_name: formData.caseName ?? '',
+            case_number: formData.caseNumber ?? ''
+        };
+    
+        // already saved? skip
+        if (
+            payload.case_short_name === lastSavedRef.current.caseName &&
+            payload.case_number === lastSavedRef.current.caseNumber
+        ) {
+            setIsCaseEdited(false);
+            return;
+        }
+    
+        const timer = setTimeout(async () => {
+        try {
+            await taskAPI.editCase(caseId, payload);
+            lastSavedRef.current = {
+            caseName: payload.case_short_name,
+            caseNumber: payload.case_number
+            };
+            setIsCaseEdited(false);
+        } catch (err) {
+            console.error('Failed to update case', err);
+        }
+        }, 2500); // adjust to 2000–3000ms as you prefer
+    
+        return () => clearTimeout(timer);
+    }, [caseId, isCaseEdited, formData.caseName, formData.caseNumber]);
+
+
     const [billingInfo, setBillingInfo] = useState({
         cancelEnRoute: true,
         cancelSetup: true,
@@ -389,7 +446,7 @@ export default function TaskDetails({ taskId }) {
                                 {expandedStep === step.number && (
                                     <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-4">
                                         {step.number === 1 && (
-                                            <CaseDetails formData={formData} onChange={setFormData} />
+                                            <CaseDetails formData={formData} onChange={handleCaseFormChange} />
                                         )}
                                         {step.number === 2 && (
                                             <WitnessManagement

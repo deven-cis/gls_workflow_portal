@@ -142,7 +142,6 @@ export default function MyTasks() {
                         {upcomingTasks.length > 0 && (
                             <TaskSection title="Upcoming" count={upcomingTasks.length}>
                                 {upcomingTasks.map((task) => (
-                                    console.log('Rendering upcoming task:', task),
                                     <TaskCard
                                         key={task.id}
                                         task={task}
