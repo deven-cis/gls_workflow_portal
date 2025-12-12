@@ -21,13 +21,13 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
     const handleMoreClick = (e) => {
         e.stopPropagation();
         onSelect && onSelect(task.id);
-        router.push(`/dashboard/task-details/${task.caseInfo?.id}`);
+        router.push(`/dashboard/task-details/${task.caseInfo?.id}?selected=${task.id}`);
     };
 
     const handleCardClick = () => {
         onSelect && onSelect(task.id);
         if (isSelected) {
-            router.push(`/dashboard/task-details/${task.caseInfo?.id}`);
+            router.push(`/dashboard/task-details/${task.caseInfo?.id}?selected=${task.id}`);
         }
     };
 

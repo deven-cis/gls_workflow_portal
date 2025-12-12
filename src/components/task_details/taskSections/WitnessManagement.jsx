@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import TimeInput from '@/components/task_details/task/TimeInput';
 import AddActionButton from '@/components/task_details/task/AddActionButton';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Edit3, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function WitnessManagement({
     witnesses,
@@ -19,81 +19,244 @@ export default function WitnessManagement({
     handleUpdateRecord,
     handleUploadVideo,
     handleDeleteRecord,
-    handleUpdateTemplate
+    handleUpdateTemplate,
+    handleRenameWitness,
+    onSaveWitnesses,
+    onCancelWitnesses,
+    onSaveWitness,
+    onCancelWitness
 }) {
+    const [pendingRename, setPendingRename] = useState({});
+    const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record', witnessId, recordId }
+    const [templateOpen, setTemplateOpen] = useState({});
+    const handleCancel = onCancelWitnesses || (() => {});
+    const handleSave = onSaveWitnesses || (() => {});
+    const handleSaveSingle = onSaveWitness || (() => {});
+    const handleCancelSingle = onCancelWitness || (() => {});
+
+    const collapseTemplate = (id) => {
+        setTemplateOpen((prev) => ({ ...prev, [id]: false }));
+        setExpandedWitness((prev) => (prev === id ? null : prev));
+    };
+
+    const toggleModal = (payload) => setConfirmModal(payload);
+
+    const confirmDelete = () => {
+        if (!confirmModal) return;
+        if (confirmModal.type === 'witness') {
+            handleDeleteWitness(confirmModal.witnessId);
+        } else if (confirmModal.type === 'record') {
+            handleDeleteRecord(confirmModal.witnessId, confirmModal.recordId);
+        }
+        setConfirmModal(null);
+    };
+
+    const renderConfirmModal = () => {
+        if (!confirmModal) return null;
+        const isWitness = confirmModal.type === 'witness';
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-5 space-y-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                            <span className="text-red-600 text-lg">!</span>
+                        </div>
+                        <div>
+                            <h4 className="text-base font-semibold text-gray-900">
+                                {isWitness ? 'Delete Witness?' : 'Delete Recording?'}
+                            </h4>
+                            <p className="text-sm text-gray-600">
+                                {isWitness
+                                    ? 'You want to delete this witness?'
+                                    : 'You want to delete this recording?'}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-3">
+                        <button
+                            className="px-4 py-2 rounded-md border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                            onClick={() => setConfirmModal(null)}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
+                            onClick={confirmDelete}
+                        >
+                            Confirm
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 relative">
+            {renderConfirmModal()}
             {witnesses.length > 0 && (
                 <div className="space-y-3">
                     {witnesses.map((witness) => (
-                        <div key={witness.id} className="border border-gray-300 rounded-lg overflow-hidden">
+                        <div key={witness.id} className="border border-gray-300 rounded-lg overflow-hidden bg-white">
                             <div
-                                onClick={() => setExpandedWitness(expandedWitness === witness.id ? null : witness.id)}
-                                className="p-4 bg-white cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                className="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                onClick={() => {
+                                    const next = expandedWitness === witness.id ? null : witness.id;
+                                    setExpandedWitness(next);
+                                    if (next) {
+                                        setTemplateOpen((prev) => ({ ...prev, [witness.id]: prev[witness.id] ?? true }));
+                                    }
+                                }}
                             >
                                 <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium text-gray-900">{witness.name}</span>
-                                    <span className="text-xs text-gray-500">02:45:00</span>
+                                    {pendingRename[witness.id]?.editing ? (
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                className="text-sm px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                                value={pendingRename[witness.id]?.value || ''}
+                                                onChange={(e) =>
+                                                    setPendingRename((prev) => ({
+                                                        ...prev,
+                                                        [witness.id]: { editing: true, value: e.target.value }
+                                                    }))
+                                                }
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                            <button
+                                                className="text-xs text-gray-500 hover:text-gray-700"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setPendingRename((prev) => ({ ...prev, [witness.id]: { editing: false, value: witness.name } }));
+                                                }}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                className="text-xs text-blue-600 font-semibold hover:text-blue-700"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleRenameWitness(witness.id, pendingRename[witness.id]?.value || witness.name);
+                                                    setPendingRename((prev) => ({ ...prev, [witness.id]: { editing: false, value: witness.name } }));
+                                                }}
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <span className="text-sm font-semibold text-gray-900">{witness.name}</span>
+                                            <span className="text-xs text-gray-500">
+                                                {`${(witnessRecords[witness.id] || []).filter(r => r.video).length}/${(witnessRecords[witness.id] || []).length || 0} Recordings Uploaded`}
+                                            </span>
+                                        </>
+                                    )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleDeleteWitness(witness.id);
+                                            setPendingRename((prev) => ({
+                                                ...prev,
+                                                [witness.id]: { editing: true, value: witness.name }
+                                            }));
+                                        }}
+                                        className="p-1 hover:bg-gray-100 rounded"
+                                    >
+                                        <Edit3 className="w-4 h-4 text-gray-500" />
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            toggleModal({ type: 'witness', witnessId: witness.id });
                                         }}
                                         className="p-1 hover:bg-red-50 rounded transition-colors"
                                     >
                                         <Trash2 className="w-4 h-4 text-red-600" />
                                     </button>
                                     <button className="text-blue-600 hover:text-blue-700 text-xs font-medium">Download complete video</button>
+                                    {expandedWitness === witness.id ? (
+                                        <ChevronUp className="w-4 h-4 text-gray-400" />
+                                    ) : (
+                                        <ChevronDown className="w-4 h-4 text-gray-400" />
+                                    )}
                                 </div>
                             </div>
 
                             {expandedWitness === witness.id && (
                                 <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-6">
-                                    <div className="bg-white p-4 rounded-lg border border-gray-200">
-                                        <h5 className="text-sm font-semibold text-gray-900 mb-4">Read on/off Template</h5>
-                                        <div className="mb-4">
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">Read on text</label>
-                                            <textarea
-                                                value={witnessTemplates[witness.id]?.readOnText || ''}
-                                                onChange={(e) => handleUpdateTemplate(witness.id, 'readOnText', e.target.value)}
-                                                className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                rows="3"
-                                            />
-                                        </div>
-                                        <div className="mb-4">
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">Read on time</label>
-                                            <TimeInput
-                                                value={witnessTemplates[witness.id]?.readOnTime}
-                                                onChange={(newValue) => handleUpdateTemplate(witness.id, 'readOnTime', newValue)}
-                                            />
-                                        </div>
-                                        <div className="mb-4">
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">Read off text</label>
-                                            <textarea
-                                                value={witnessTemplates[witness.id]?.readOffText || ''}
-                                                onChange={(e) => handleUpdateTemplate(witness.id, 'readOffText', e.target.value)}
-                                                className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                rows="3"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-700 mb-2">Read off time</label>
-                                            <TimeInput
-                                                value={witnessTemplates[witness.id]?.readOffTime}
-                                                onChange={(newValue) => handleUpdateTemplate(witness.id, 'readOffTime', newValue)}
-                                            />
-                                        </div>
+                                    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                        <button
+                                            type="button"
+                                            className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                                            onClick={() =>
+                                                setTemplateOpen((prev) => ({
+                                                    ...prev,
+                                                    [witness.id]: !(prev[witness.id] ?? true)
+                                                }))
+                                            }
+                                        >
+                                            <span>Read on/off Template</span>
+                                            {(templateOpen[witness.id] ?? true) ? (
+                                                <ChevronUp className="w-4 h-4 text-gray-500" />
+                                            ) : (
+                                                <ChevronDown className="w-4 h-4 text-gray-500" />
+                                            )}
+                                        </button>
+                                        {(templateOpen[witness.id] ?? true) && (
+                                            <div className="p-4 space-y-4 border-t border-gray-200">
+                                                <div className="mb-4">
+                                                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                                                        Read on text <span className="text-red-600">*</span>
+                                                    </label>
+                                                    <textarea
+                                                        value={witnessTemplates[witness.id]?.readOnText || ''}
+                                                        onChange={(e) => handleUpdateTemplate(witness.id, 'readOnText', e.target.value)}
+                                                        className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        rows="3"
+                                                    />
+                                                </div>
+                                                <div className="mb-4">
+                                                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                                                        Read on time <span className="text-red-600">*</span>
+                                                    </label>
+                                                    <TimeInput
+                                                        value={witnessTemplates[witness.id]?.readOnTime}
+                                                        onChange={(newValue) => handleUpdateTemplate(witness.id, 'readOnTime', newValue)}
+                                                    />
+                                                </div>
+                                                <div className="mb-4">
+                                                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                                                        Read off text <span className="text-red-600">*</span>
+                                                    </label>
+                                                    <textarea
+                                                        value={witnessTemplates[witness.id]?.readOffText || ''}
+                                                        onChange={(e) => handleUpdateTemplate(witness.id, 'readOffText', e.target.value)}
+                                                        className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                        rows="3"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                                                        Read off time <span className="text-red-600">*</span>
+                                                    </label>
+                                                    <TimeInput
+                                                        value={witnessTemplates[witness.id]?.readOffTime}
+                                                        onChange={(newValue) => handleUpdateTemplate(witness.id, 'readOffTime', newValue)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {witnessRecords[witness.id]?.map((record) => (
+                                    {witnessRecords[witness.id]?.map((record, idx) => (
                                         <div key={record.id} className="bg-white p-4 rounded-lg border border-gray-200">
                                             <div className="flex items-center justify-between mb-4">
-                                                <h5 className="text-sm font-semibold text-gray-900">New Record</h5>
+                                                <h5 className="text-sm font-semibold text-gray-900">
+                                                    {witness.name} - Part {idx + 1}
+                                                </h5>
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleDeleteRecord(witness.id, record.id)}
+                                                    onClick={() => toggleModal({ type: 'record', witnessId: witness.id, recordId: record.id })}
                                                     className="p-2 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
@@ -102,14 +265,18 @@ export default function WitnessManagement({
 
                                             <div className="grid grid-cols-2 gap-4 mb-4">
                                                 <div>
-                                                    <label className="block text-xs font-medium text-gray-700 mb-2">Start Time</label>
+                                                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                                                        Start Time <span className="text-red-600">*</span>
+                                                    </label>
                                                     <TimeInput
                                                         value={record.startTime}
                                                         onChange={(newValue) => handleUpdateRecord(witness.id, record.id, 'startTime', newValue)}
                                                     />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-xs font-medium text-gray-700 mb-2">End Time</label>
+                                                    <label className="block text-xs font-medium text-gray-700 mb-2">
+                                                        End Time <span className="text-red-600">*</span>
+                                                    </label>
                                                     <TimeInput
                                                         value={record.endTime}
                                                         onChange={(newValue) => handleUpdateRecord(witness.id, record.id, 'endTime', newValue)}
@@ -155,7 +322,37 @@ export default function WitnessManagement({
                                         </div>
                                     ))}
 
-                                    <AddActionButton label="Add Record" onClick={() => handleAddRecord(witness.id)} />
+                                    <AddActionButton
+                                        label="Add Video"
+                                        onClick={() => handleAddRecord(witness.id)}
+                                        disabled={(witnessRecords[witness.id] || []).length >= 5}
+                                    />
+
+                                    <div className="flex justify-end gap-3 pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                collapseTemplate(witness.id);
+                                                handleCancelSingle(witness.id);
+                                            }}
+                                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                collapseTemplate(witness.id);
+                                                handleSaveSingle(witness.id, {
+                                                    template: witnessTemplates[witness.id],
+                                                    records: witnessRecords[witness.id] || []
+                                                });
+                                            }}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                                        >
+                                            Save
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -196,6 +393,7 @@ export default function WitnessManagement({
             ) : (
                 <AddActionButton label="Add Witness" onClick={() => setAddingWitness(true)} />
             )}
+
         </div>
     );
 }

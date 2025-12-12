@@ -1,79 +1,8 @@
+import { galloInstance } from './galloInstance.js';
 
-// FastAPI server URL - update this to your FastAPI server address
-const FASTAPI_URL = 'http://127.0.0.1:8000';
+const GALLo_URL = 'http://127.0.0.1:8000'; 
+let API_BASE_URL = GALLo_URL;
 
-let API_BASE_URL = FASTAPI_URL;
-
-
-/**
- * Generic fetch wrapper with error handling
- */
-const apiCall = async (endpoint, options = {}) => {
-  const url = `${API_BASE_URL}${endpoint}`;
-  
-  // Get the access token from localStorage
-  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-  console.log('Token:', token);
-  const config = {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    ...options,
-  };
-
-  // Add Authorization header if token exists
-  if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  try {
-    const response = await fetch(url, config);
-
-    const text = await response.text();
-    const contentType = response.headers.get('content-type') || '';
-
-    let body = text;
-    if (contentType.includes('application/json')) {
-      try {
-        body = JSON.parse(text);
-      } catch (err) {
-        // fall through, body remains text
-      }
-    }
-
-    // Handle 403 Forbidden - redirect to login
-    if (response.status === 403) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        window.location.href = '/auth/login';
-      }
-      return;
-    }
-
-    if (!response.ok) {
-      const message = (body && body.message) || response.statusText || text || 'Unknown error';
-      const err = new Error(`API Error: ${response.status} ${message}`);
-      err.status = response.status;
-      err.body = body;
-      throw err;
-    }
-
-    // return parsed JSON when possible, otherwise raw text
-    return typeof body === 'string' && contentType.includes('application/json') === false ? { data: body } : body;
-  } catch (error) {
-    console.error(`API Call Failed: ${endpoint}`, error);
-    throw error;
-  }
-};
-
-/**
- * Task API endpoints
- */
-/**
- * Mapper function to convert backend job response to frontend task format
- */
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
   const dateStr = jobDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -104,18 +33,18 @@ export const taskAPI = {
   // Get all tasks
   getTasks: async (filters = {}) => {
     const params = new URLSearchParams(filters).toString();
-    return apiCall(`/tasks${params ? `?${params}` : ''}`);
+    return galloInstance(`/tasks${params ? `?${params}` : ''}`);
   },
 
   // Get task by ID
   getCaseById: async (caseId) => {
-    const data = await apiCall(`/case/get/${caseId}`);
+    const data = await galloInstance(`/case/get/${caseId}`);
     console.log('Case data:', data);
     return data;
   },
 
   editCase: async (caseId, caseData) => {
-    const data = await apiCall(`/case/edit/${caseId}`, {
+    const data = await galloInstance(`/case/edit/${caseId}`, {
       method: 'PUT',
       body: JSON.stringify(caseData),
     });
@@ -125,20 +54,20 @@ export const taskAPI = {
 
   // Get pending tasks from backendx`
   getPendingTasks: async () => {
-    const response = await apiCall('/jobs/pending/');
+    const response = await galloInstance('/jobs/pending/');
     return Array.isArray(response) ? response.map(mapJobToTask) : [];
   },
 
   // Get upcoming tasks from backend
   getUpcomingTasks: async () => {
-    const response = await apiCall('/jobs/upcoming/');
+    const response = await galloInstance('/jobs/upcoming/');
     // Map backend response to frontend format
     return Array.isArray(response) ? response.map(mapJobToTask) : [];
   },
 
   // Create new task
   createTask: async (taskData) => {
-    return apiCall('/tasks', {
+    return galloInstance('/tasks', {
       method: 'POST',
       body: JSON.stringify(taskData),
     });
@@ -146,7 +75,7 @@ export const taskAPI = {
 
   // Update task
   updateTask: async (taskId, taskData) => {
-    return apiCall(`/tasks/${taskId}`, {
+    return galloInstance(`/tasks/${taskId}`, {
       method: 'PUT',
       body: JSON.stringify(taskData),
     });
@@ -154,7 +83,7 @@ export const taskAPI = {
 
   // Delete task
   deleteTask: async (taskId) => {
-    return apiCall(`/tasks/${taskId}`, {
+    return galloInstance(`/tasks/${taskId}`, {
       method: 'DELETE',
     });
   },
@@ -164,7 +93,7 @@ export const taskAPI = {
     const formData = new FormData();
     formData.append('file', file);
 
-    return fetch(`${API_BASE_URL}/tasks/${taskId}/upload-video`, {
+    return galloInstance(`/tasks/${taskId}/upload-video`, {
       method: 'POST',
       body: formData,
     }).then(res => {
@@ -179,7 +108,7 @@ export const taskAPI = {
  */
 export const authAPI = {
   login: async (login_name, login_password) => {
-    return apiCall('/api/login', {
+    return galloInstance('/api/login', {
       method: 'POST',
       body: JSON.stringify({ login_name, login_password }),
       headers: {
@@ -198,11 +127,11 @@ export const authAPI = {
   },
 
   getProfile: async () => {
-    return apiCall('/auth/users/me');
+    return galloInstance('/auth/users/me');
   },
 
   refreshToken: async (refreshToken) => {
-    return apiCall('/auth/token/refresh', {
+    return galloInstance('/auth/token/refresh', {
       method: 'POST',
       body: new URLSearchParams({
         refresh_token: refreshToken,

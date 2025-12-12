@@ -19,7 +19,6 @@ import { taskAPI } from '@/services/api';
 
 export default function TaskDetails({ caseId, caseInfo }) {
     const params = useParams();
-    console.log('TaskDetails page mounted with params:', caseId, caseInfo);
     const router = useRouter();
     const [expandedStep, setExpandedStep] = useState(1);
     const [completedSteps, setCompletedSteps] = useState([]);
@@ -278,6 +277,7 @@ export default function TaskDetails({ caseId, caseInfo }) {
             });
             setNewWitnessName('');
             setAddingWitness(false);
+            setExpandedWitness(witnessId);
         }
     };
 
