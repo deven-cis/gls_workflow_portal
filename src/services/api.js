@@ -130,21 +130,20 @@ export const authAPI = {
     return galloInstance('/auth/users/me');
   },
 
+
   refreshToken: async (refreshToken) => {
-    return galloInstance('/auth/token/refresh', {
+    return galloInstance('/api/refresh-token', {
       method: 'POST',
-      body: new URLSearchParams({
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      }),
+      body: JSON.stringify({ refresh_token: refreshToken }),
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/json',
       },
     });
   },
 };
 
+
 export default {
   taskAPI,
-  authAPI,
+  authAPI
 };

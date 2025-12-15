@@ -1,9 +1,116 @@
+
+import { handleTokenRefresh, ensureValidToken } from '@/lib/tokenRefresh';
+import { getRefreshToken, logout } from '@/lib/auth';
+
 /**
- * Generic fetch wrapper with error handling
+ * Generic fetch wrapper with error handling and token refresh
  */
 const GALLo_URL = 'http://127.0.0.1:8000'; 
 
 const API_BASE_URL = GALLo_URL;
+
+// Flag to prevent multiple concurrent refresh attempts
+let isRefreshing = false;
+// Queue of requests waiting for token refresh
+let refreshQueue = [];
+
+/**
+ * Process queued requests after token refresh
+ */
+function processQueue(error, token = null) {
+    refreshQueue.forEach(prom => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    refreshQueue = [];
+}
+
+/**
+ * Refresh the access token using refresh token
+ */
+async function refreshAccessToken() {
+    const refreshToken = getRefreshToken();
+    
+    if (!refreshToken) {
+        throw new Error('No refresh token available');
+    }
+
+    try {
+        console.log('Refreshing access token...');
+        
+        // Direct API call to refresh endpoint
+        const response = await fetch(`${API_BASE_URL}/api/refresh-token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+
+        const text = await response.text();
+        const contentType = response.headers.get('content-type') || '';
+        
+        let data = text;
+        if (contentType.includes('application/json')) {
+            try {
+                data = JSON.parse(text);
+            } catch (err) {
+                // fall through, data remains text
+            }
+        }
+
+        if (!response.ok) {
+            throw new Error(`Refresh failed: ${response.status} ${response.statusText}`);
+        }
+
+        if (data.access_token) {
+            console.log('Token refreshed successfully');
+            // Store tokens in localStorage
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('access_token', data.access_token);
+                if (data.refresh_token) {
+                    localStorage.setItem('refresh_token', data.refresh_token);
+                }
+            }
+            return data;
+        } else {
+            throw new Error('No access token in refresh response');
+        }
+    } catch (error) {
+        console.error('Token refresh failed:', error);
+        // If refresh fails, clear all tokens and logout
+        logout();
+        throw error;
+    }
+}
+
+/**
+ * Main token refresh handler with concurrency control
+ */
+async function handleTokenRefreshInternal() {
+    if (isRefreshing) {
+        // If already refreshing, wait for the current refresh to complete
+        return new Promise((resolve, reject) => {
+            refreshQueue.push({ resolve, reject });
+        });
+    }
+
+    isRefreshing = true;
+
+    try {
+        const newTokenData = await refreshAccessToken();
+        processQueue(null, newTokenData.access_token);
+        return newTokenData;
+    } catch (error) {
+        processQueue(error, null);
+        throw error;
+    } finally {
+        isRefreshing = false;
+    }
+}
 
 export const galloInstance = async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}${endpoint}`;
@@ -11,6 +118,7 @@ export const galloInstance = async (endpoint, options = {}) => {
     // Get the access token from localStorage
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
     console.log('Token:', token);
+    
     const config = {
       headers: {
         'Content-Type': 'application/json',
@@ -39,6 +147,49 @@ export const galloInstance = async (endpoint, options = {}) => {
         }
       }
   
+      // Handle 401 Unauthorized - try to refresh token
+      if (response.status === 401) {
+        console.log('Received 401, attempting token refresh...');
+        
+        try {
+            await handleTokenRefreshInternal();
+            
+            // Retry the original request with new token
+            const newToken = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+            if (newToken) {
+                const retryConfig = {
+                    ...config,
+                    headers: {
+                        ...config.headers,
+                        'Authorization': `Bearer ${newToken}`,
+                    },
+                };
+                
+                const retryResponse = await fetch(url, retryConfig);
+                const retryText = await retryResponse.text();
+                const retryContentType = retryResponse.headers.get('content-type') || '';
+                
+                let retryBody = retryText;
+                if (retryContentType.includes('application/json')) {
+                    try {
+                        retryBody = JSON.parse(retryText);
+                    } catch (err) {
+                        // fall through, retryBody remains text
+                    }
+                }
+                
+                if (retryResponse.ok) {
+                    return typeof retryBody === 'string' && !retryContentType.includes('application/json') ? { data: retryBody } : retryBody;
+                } else {
+                    // If retry also fails, fall through to error handling
+                    body = retryBody;
+                }
+            }
+        } catch (refreshError) {
+            console.error('Token refresh failed during retry:', refreshError);
+        }
+      }
+  
       // Handle 403 Forbidden - redirect to login
       if (response.status === 403) {
         if (typeof window !== 'undefined') {
@@ -58,7 +209,7 @@ export const galloInstance = async (endpoint, options = {}) => {
       }
   
       // return parsed JSON when possible, otherwise raw text
-      return typeof body === 'string' && contentType.includes('application/json') === false ? { data: body } : body;
+      return typeof body === 'string' && !contentType.includes('application/json') ? { data: body } : body;
     } catch (error) {
       console.error(`API Call Failed: ${endpoint}`, error);
       throw error;

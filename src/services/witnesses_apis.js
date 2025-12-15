@@ -10,6 +10,17 @@ export const witnessesAPI = {
     },
     getJobWitnesses: async (jobId) => {
         const response = await galloInstance(`/witnesses/get/${jobId}`);
+        console.log('✅ API: Witnesses response:', response);
+        return response;
+    },
+
+    createJObWitness: async (witnessData) => {
+        console.log('Creating witness with data:', witnessData);
+        const response = await galloInstance('/witnesses/create-name', {
+            method: 'POST',
+            body: JSON.stringify(witnessData),
+        });
+        console.log('Witness creation response:', response);
         return response;
     },
     addWitnessToCase: async (caseId, witnessId) => {
