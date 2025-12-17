@@ -119,13 +119,22 @@ export const galloInstance = async (endpoint, options = {}) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
     console.log('Token:', token);
     
+    // Check if body is FormData - if so, don't set Content-Type (browser will set it with boundary)
+    const isFormData = options.body instanceof FormData;
+    
     const config = {
       headers: {
-        'Content-Type': 'application/json',
+        // Only set Content-Type for non-FormData requests
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...options.headers,
       },
       ...options,
     };
+    
+    // Remove Content-Type if it was explicitly set to undefined (for FormData)
+    if (config.headers['Content-Type'] === undefined) {
+        delete config.headers['Content-Type'];
+    }
   
     // Add Authorization header if token exists
     if (token) {

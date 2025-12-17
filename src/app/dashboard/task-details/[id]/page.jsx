@@ -9,8 +9,7 @@ export default function TaskDetailsPage() {
   const params = useParams();
   const taskCaseId = params.id;
   const searchParams = useSearchParams();
-  const selectedTaskId = searchParams.get('selected');
-  console.log('selectedTaskId', selectedTaskId);
+  const selectedJobId = searchParams.get('jobId');
   const [caseInfo, setCaseInfo] = useState(null);
   const [witnessesData, setWitnessesData] = useState([]);
 
@@ -27,16 +26,17 @@ export default function TaskDetailsPage() {
   }, [taskCaseId]);
 
   useEffect(() => {
-    if (!taskCaseId) return;
+    if (!selectedJobId) return;
     (async () => {
       try {
-        const data = await witnessesAPI.getJobWitnesses(taskCaseId);
+        const data = await witnessesAPI.getJobWitnesses(selectedJobId);
+        console.log('Fetched witnesses data:', data);
         setWitnessesData(Array.isArray(data) ? data : []);
       } catch (err) {
         console.error('Failed to fetch witnesses:', err);
       }
     })();
-  }, [taskCaseId]);
+  }, [selectedJobId]);
 
   return <TaskDetails caseId={taskCaseId} caseInfo={caseInfo} witnessesData={witnessesData} />;
 }

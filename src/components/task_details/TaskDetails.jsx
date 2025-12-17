@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter , useSearchParams} from 'next/navigation';
 import { MapPin, Clock, MoreVertical, ChevronDown, ChevronUp, Trash2, Clock as ClockIcon, Check, Search } from 'lucide-react';
 import AvatarMenu from '@/components/layouts/AvatarMenu';
 import { createAttorneySection, getInitials } from '@/lib/utils';
@@ -16,8 +16,11 @@ import AttorneyOrders from '@/components/task_details/taskSections/AttorneyOrder
 import BillingInfo from '@/components/task_details/taskSections/BillingInfo';
 import EquipmentSection from '@/components/task_details/taskSections/EquipmentSection';
 import { taskAPI } from '@/services/api';
+import { witnessesAPI } from '@/services/witnesses_apis';
+import { attorneysAPI } from '@/services/attorneys_apis';
+import { useToast } from '@/contexts/ToastContext';
 
-export default function TaskDetails({ caseId, caseInfo }) {
+export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const params = useParams();
     const router = useRouter();
     const [expandedStep, setExpandedStep] = useState(1);
@@ -34,6 +37,109 @@ export default function TaskDetails({ caseId, caseInfo }) {
     const [attorneySections, setAttorneySections] = useState([
         createAttorneySection('Taking Attorney')
     ]);
+    const [expandedAttorney, setExpandedAttorney] = useState(null);
+    const [editingAttorney, setEditingAttorney] = useState(null);
+    const searchParams = useSearchParams();
+    const selectedJobId = searchParams.get('jobId');
+    const toast = useToast();
+    console.log("taskDetails witnessesData:", witnessesData);
+    // seed witnesses from page data
+    useEffect(() => {
+        if (!Array.isArray(witnessesData)) return;
+        const mapped = witnessesData
+            .map((w) => ({
+                id: w.id ?? w.witness_id ?? w.uuid ?? Date.now() + Math.random(),
+                name: w.name ?? w.witness_name ?? w.full_name ?? 'Unnamed Witness',
+            }))
+            .filter((w) => w.id != null);
+        setWitnesses(mapped);
+        setWitnessRecords((prev) => {
+            const next = { ...prev };
+            for (const w of mapped) {
+                if (!next[w.id]) next[w.id] = [];
+            }
+            return next;
+        });
+        setWitnessTemplates((prev) => {
+            const next = { ...prev };
+            // Build a name->id map in case API items lack an id field
+            const byName = new Map(
+                mapped
+                    .filter((m) => m?.name)
+                    .map((m) => [(m.name || '').toLowerCase(), m.id])
+            );
+            for (const raw of witnessesData) {
+                let id = raw.id ?? raw.witness_id ?? raw.uuid;
+                if (id == null) {
+                    const rawName = (raw.witness_name ?? raw.name ?? '').toLowerCase();
+                    if (rawName) id = byName.get(rawName);
+                }
+                if (id == null) continue;
+                const existing = next[id] ?? {};
+                next[id] = {
+                    readOnText: raw.read_on_text ?? raw.readOnText ?? existing.readOnText ?? '',
+                    readOnTime: raw.read_on_time ?? raw.readOnTime ?? existing.readOnTime ?? '',
+                    readOffText: raw.read_off_text ?? raw.readOffText ?? existing.readOffText ?? '',
+                    readOffTime: raw.read_off_time ?? raw.readOffTime ?? existing.readOffTime ?? '',
+                };
+            }
+            return next;
+        });
+    }, [witnessesData]);
+
+    // Fetch attorneys from backend when jobId is available
+    useEffect(() => {
+        const fetchAttorneys = async () => {
+            if (!selectedJobId) return;
+            
+            try {
+                const attorneysData = await attorneysAPI.getJobAttorneys(selectedJobId);
+                
+                if (Array.isArray(attorneysData) && attorneysData.length > 0) {
+                    // Map backend response to frontend format (reusing same logic as handleAddAttorneySection)
+                    const mappedSections = attorneysData.map((attorney, index) => {
+                        // Use same title logic: first is "Taking Attorney", rest are numbered
+                        const title = index === 0 ? 'Taking Attorney' : `Attorney ${index}`;
+                        
+                        // Map document if file exists
+                        const documents = attorney.file_name ? [{
+                            id: `doc-${attorney.id}-${Date.now()}`,
+                            name: attorney.file_name,
+                            size: 0, // Backend doesn't provide size
+                            type: attorney.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                            uploadedAt: new Date().toISOString(),
+                            backendId: attorney.id,
+                            filePath: attorney.file_name_path
+                        }] : [];
+                        
+                        return {
+                            id: `attorney-${attorney.id}`, // Use backend ID for consistency
+                            backendId: attorney.id,
+                            title: title,
+                            fields: {
+                                attorneyName: attorney.attorney_name || '',
+                                firmName: attorney.firm_name || '',
+                                notes: attorney.notes || '',
+                                orderDetails: attorney.order_details || ''
+                            },
+                            documents: documents
+                        };
+                    });
+                    
+                    setAttorneySections(mappedSections);
+                } else {
+                    // No attorneys found, keep default "Taking Attorney"
+                    setAttorneySections([createAttorneySection('Taking Attorney')]);
+                }
+            } catch (err) {
+                console.error('Failed to fetch attorneys:', err);
+                // On error, keep default "Taking Attorney"
+                setAttorneySections([createAttorneySection('Taking Attorney')]);
+            }
+        };
+        
+        fetchAttorneys();
+    }, [selectedJobId]);
 
     // sync when caseInfo arrives
     useEffect(() => {
@@ -134,7 +240,8 @@ export default function TaskDetails({ caseId, caseInfo }) {
             id: `${file.name}-${Date.now()}`,
             name: file.name,
             size: file.size,
-            type: file.type
+            type: file.type,
+            uploadedAt: new Date().toISOString()
         };
     };
 
@@ -150,45 +257,177 @@ export default function TaskDetails({ caseId, caseInfo }) {
 
     const handleAttorneyUpload = (sectionId, file) => {
         if (!file) return;
+        const section = attorneySections.find(s => s.id === sectionId);
+        if (!section) return;
+
+        // Store File object locally - will be sent with update/create API call
         const newDoc = {
             id: `${sectionId}-${Date.now()}`,
             name: file.name,
             size: file.size,
-            type: file.type
+            type: file.type,
+            uploadedAt: new Date().toISOString(),
+            file: file // Store File object to send with create/update API call
         };
         setAttorneySections((prev) =>
-            prev.map((section) =>
-                section.id === sectionId
-                    ? { ...section, documents: [...section.documents, newDoc] }
-                    : section
+            prev.map((s) =>
+                s.id === sectionId
+                    ? { ...s, documents: [newDoc] } // Replace existing document (only one document allowed)
+                    : s
             )
         );
     };
 
     const handleRemoveAttorneyDocument = (sectionId, documentId) => {
+        // Remove from local state - will be handled by update API call
         setAttorneySections((prev) =>
-            prev.map((section) =>
-                section.id === sectionId
+            prev.map((s) =>
+                s.id === sectionId
                     ? {
-                          ...section,
-                          documents: section.documents.filter((doc) => doc.id !== documentId)
+                          ...s,
+                          documents: s.documents.filter((doc) => doc.id !== documentId)
                       }
-                    : section
+                    : s
             )
         );
     };
 
     const handleAddAttorneySection = () => {
-        setAttorneySections((prev) => {
-            const hasCopy = prev.some((section) => section.title === 'Copy of Attorney');
-            const numberedCount = prev.filter((section) => /^Attorney\s\d+$/i.test(section.title)).length;
-            const title = hasCopy ? `Attorney ${numberedCount + 1}` : 'Copy of Attorney';
-            return [...prev, createAttorneySection(title)];
-        });
+        const hasCopy = attorneySections.some((section) => section.title === 'Copy of Attorney');
+        const numberedCount = attorneySections.filter((section) => /^Attorney\s\d+$/i.test(section.title)).length;
+        const title = hasCopy ? `Attorney ${numberedCount + 1}` : 'Copy of Attorney';
+        const newSection = createAttorneySection(title);
+        
+        setAttorneySections((prev) => [...prev, newSection]);
+        // Auto-expand and enable editing for new section
+        setExpandedAttorney(newSection.id);
+        setEditingAttorney(newSection.id);
     };
 
-    const handleRemoveAttorneySection = (sectionId) => {
-        setAttorneySections((prev) => prev.filter((section) => section.id !== sectionId));
+    const handleRemoveAttorneySection = async (sectionId) => {
+        const section = attorneySections.find(s => s.id === sectionId);
+        
+        try {
+            // If attorney has backend ID, delete via API
+            if (section?.backendId && selectedJobId) {
+                await attorneysAPI.deleteAttorney(section.backendId);
+                toast.success('Attorney deleted successfully');
+            }
+            
+            // Remove from local state
+            setAttorneySections((prev) => prev.filter((s) => s.id !== sectionId));
+            if (expandedAttorney === sectionId) {
+                setExpandedAttorney(null);
+            }
+            if (editingAttorney === sectionId) {
+                setEditingAttorney(null);
+            }
+        } catch (err) {
+            console.error('Failed to delete attorney:', err);
+            toast.error('Failed to delete attorney');
+        }
+    };
+
+    const handleSaveAttorney = async (sectionId) => {
+        const section = attorneySections.find(s => s.id === sectionId);
+        if (!section || !selectedJobId) {
+            setEditingAttorney(null);
+            return;
+        }
+
+        const attorneyData = {
+            attorneyName: section.fields.attorneyName,
+            firmName: section.fields.firmName,
+            notes: section.fields.notes,
+            orderDetails: section.fields.orderDetails,
+        };
+
+        // Get the first document file if it exists (for both create and update)
+        const documentFile = section.documents.find(doc => doc.file)?.file || null;
+        
+        // Check if document was removed:
+        // - If section has backendId (existing attorney) 
+        // - AND documents array is empty (user removed it)
+        // - AND no new file uploaded
+        // Then we need to explicitly send empty document field to remove it
+        // Note: We can't perfectly detect if there was originally a document, but if it's an existing
+        // attorney with empty documents and no new file, we'll send empty field - backend will handle it correctly
+        const isExistingAttorney = !!section.backendId;
+        const hasNewFile = !!documentFile;
+        const documentsNowEmpty = section.documents.length === 0;
+        // If it's an existing attorney with no documents now and no new file, assume document was removed
+        const shouldRemoveDocument = isExistingAttorney && documentsNowEmpty && !hasNewFile;
+
+        try {
+            if (section.backendId) {
+                // Update existing attorney with file in single API call
+                const response = await attorneysAPI.updateAttorney(section.backendId, attorneyData, documentFile, shouldRemoveDocument);
+                
+                // Use backend response to update local state (includes updated document info)
+                const updatedAttorney = response?.result || response;
+                
+                // Map document from backend response - if file_name is null, documents array is empty
+                const updatedDocuments = updatedAttorney?.file_name ? [{
+                    id: `doc-${updatedAttorney.id}-${Date.now()}`,
+                    name: updatedAttorney.file_name,
+                    size: 0,
+                    type: updatedAttorney.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                    uploadedAt: new Date().toISOString(),
+                    backendId: updatedAttorney.id,
+                    filePath: updatedAttorney.file_name_path
+                }] : []; // Empty array if no document
+                
+                setAttorneySections((prev) =>
+                    prev.map((s) => {
+                        if (s.id === sectionId) {
+                            return {
+                                ...s,
+                                backendId: updatedAttorney.id || s.backendId,
+                                fields: {
+                                    attorneyName: updatedAttorney.attorney_name || s.fields.attorneyName,
+                                    firmName: updatedAttorney.firm_name || s.fields.firmName,
+                                    notes: updatedAttorney.notes || s.fields.notes,
+                                    orderDetails: updatedAttorney.order_details || s.fields.orderDetails,
+                                },
+                                documents: updatedDocuments // Use backend response data - will be empty if document was removed
+                            };
+                        }
+                        return s;
+                    })
+                );
+                toast.success('Attorney updated successfully');
+            } else {
+                // Create new attorney with file in single API call
+                const response = await attorneysAPI.createJobAttorney(selectedJobId, attorneyData, documentFile);
+                setAttorneySections((prev) =>
+                    prev.map((s) => {
+                        if (s.id === sectionId) {
+                            // Remove file objects from documents after successful save (file is now on backend)
+                            const cleanedDocuments = s.documents.map(doc => {
+                                const { file, ...docWithoutFile } = doc;
+                                return docWithoutFile;
+                            });
+                            return {
+                                ...s,
+                                backendId: response.id || response.attorney_id,
+                                documents: cleanedDocuments
+                            };
+                        }
+                        return s;
+                    })
+                );
+                toast.success('Attorney created successfully');
+            }
+            setEditingAttorney(null);
+        } catch (err) {
+            console.error('Failed to save attorney:', err);
+            toast.error('Failed to save attorney');
+        }
+    };
+
+    const handleCancelAttorney = (sectionId) => {
+        // Cancel editing - just close edit mode
+        setEditingAttorney(null);
     };
 
     const handleBillingToggle = (field) => {
@@ -250,7 +489,13 @@ export default function TaskDetails({ caseId, caseInfo }) {
     ];
 
     const toggleStep = (stepNumber) => {
+        const isExpanding = expandedStep !== stepNumber;
         setExpandedStep(expandedStep === stepNumber ? null : stepNumber);
+        
+        // Auto-expand first attorney when Attorney Orders section is opened for the first time
+        if (stepNumber === 3 && isExpanding && !expandedAttorney && attorneySections.length > 0) {
+            setExpandedAttorney(attorneySections[0].id);
+        }
     };
 
     const toggleStepDone = (stepNumber) => {
@@ -261,23 +506,76 @@ export default function TaskDetails({ caseId, caseInfo }) {
         }
     };
 
-    const handleAddWitness = () => {
-        if (newWitnessName.trim()) {
-            const witnessId = Date.now();
-            setWitnesses([...witnesses, { id: witnessId, name: newWitnessName }]);
-            setWitnessRecords({ ...witnessRecords, [witnessId]: [] });
-            setWitnessTemplates({
-                ...witnessTemplates,
-                [witnessId]: {
-                    readOnText: '',
-                    readOnTime: '',
-                    readOffText: '',
-                    readOffTime: ''
+    const handleAddWitness = async () => {
+        const name = newWitnessName.trim();
+        if (!name) return;
+        try {
+            const jobIdParam = searchParams.get('jobId');
+            const jobId = Number(jobIdParam ?? params?.id);
+            const payload = { job_no: jobId, witness_name: name };
+            const created = await witnessesAPI.createJObWitness(payload);
+            const newId = created?.id ?? created?.witness_id ?? Date.now();
+            const newWitness = { id: newId, name: created?.name ?? created?.witness_name ?? name };
+            setWitnesses((prev) => [...prev, newWitness]);
+            setWitnessRecords((prev) => ({ ...prev, [newId]: prev[newId] ?? [] }));
+            
+            // Get default template from first existing witness or use API response
+            setWitnessTemplates((prev) => {
+                // First, try to get template from API response
+                const apiTemplate = {
+                    readOnText: created?.read_on_text ?? created?.readOnText,
+                    readOnTime: created?.read_on_time ?? created?.readOnTime,
+                    readOffText: created?.read_off_text ?? created?.readOffText,
+                    readOffTime: created?.read_off_time ?? created?.readOffTime,
+                };
+                
+                // If API has template data, use it
+                if (apiTemplate.readOnText || apiTemplate.readOffText) {
+                    return {
+                        ...prev,
+                        [newId]: {
+                            readOnText: apiTemplate.readOnText ?? '',
+                            readOnTime: apiTemplate.readOnTime ?? '',
+                            readOffText: apiTemplate.readOffText ?? '',
+                            readOffTime: apiTemplate.readOffTime ?? '',
+                        },
+                    };
                 }
+                
+                // Otherwise, use first existing witness's template as default
+                const existingTemplateKeys = Object.keys(prev);
+                if (existingTemplateKeys.length > 0) {
+                    const firstTemplate = prev[existingTemplateKeys[0]];
+                    if (firstTemplate && (firstTemplate.readOnText || firstTemplate.readOffText)) {
+                        return {
+                            ...prev,
+                            [newId]: {
+                                readOnText: firstTemplate.readOnText ?? '',
+                                readOnTime: firstTemplate.readOnTime ?? '',
+                                readOffText: firstTemplate.readOffText ?? '',
+                                readOffTime: firstTemplate.readOffTime ?? '',
+                            },
+                        };
+                    }
+                }
+                
+                // Fallback: use empty template (original behavior)
+                return {
+                    ...prev,
+                    [newId]: prev[newId] ?? {
+                        readOnText: '',
+                        readOnTime: '',
+                        readOffText: '',
+                        readOffTime: '',
+                    },
+                };
             });
+            
             setNewWitnessName('');
             setAddingWitness(false);
-            setExpandedWitness(witnessId);
+            setExpandedWitness(newId);
+        } catch (err) {
+            console.error('Failed to create witness:', err);
         }
     };
 
@@ -476,6 +774,12 @@ export default function TaskDetails({ caseId, caseInfo }) {
                                                 handleAttorneyFieldChange={handleAttorneyFieldChange}
                                                 handleAttorneyUpload={handleAttorneyUpload}
                                                 handleRemoveAttorneyDocument={handleRemoveAttorneyDocument}
+                                                handleSaveAttorney={handleSaveAttorney}
+                                                handleCancelAttorney={handleCancelAttorney}
+                                                expandedAttorney={expandedAttorney}
+                                                setExpandedAttorney={setExpandedAttorney}
+                                                editingAttorney={editingAttorney}
+                                                setEditingAttorney={setEditingAttorney}
                                             />
                                         )}
                                         {step.number === 4 && (

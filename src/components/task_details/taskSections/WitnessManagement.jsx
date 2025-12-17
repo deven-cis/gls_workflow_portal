@@ -112,7 +112,7 @@ export default function WitnessManagement({
                                     {pendingRename[witness.id]?.editing ? (
                                         <div className="flex items-center gap-2">
                                             <input
-                                                className="text-sm px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                                                className="text-sm px-2 py-1 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 text-gray-900"
                                                 value={pendingRename[witness.id]?.value || ''}
                                                 onChange={(e) =>
                                                     setPendingRename((prev) => ({

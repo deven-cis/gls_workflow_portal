@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import dynamic from 'next/dynamic';
 import Header from '@/components/layouts/Header';
+import { ToastProvider } from '@/contexts/ToastContext';
 
 // Dynamically import Sidebar with SSR disabled
 const Sidebar = dynamic(() => import('./Sidebar'), { ssr: false });
@@ -40,24 +41,26 @@ export default function LayoutWrapper({ children }) {
     const hideSidebar = pathname === '/' || pathname.startsWith('/auth');
 
     return (
-        <div className="flex h-screen overflow-hidden bg-white">
-            {isMounted && !hideSidebar && (
-                <Sidebar
-                    isSidebarCollapsed={isSidebarCollapsed}
-                    setIsSidebarCollapsed={setIsSidebarCollapsed}
-                />
-            )}
+        <ToastProvider>
+            <div className="flex h-screen overflow-hidden bg-white">
+                {isMounted && !hideSidebar && (
+                    <Sidebar
+                        isSidebarCollapsed={isSidebarCollapsed}
+                        setIsSidebarCollapsed={setIsSidebarCollapsed}
+                    />
+                )}
 
-            <main className={`flex-1 overflow-auto transition-all duration-300 ${
-                !hideSidebar && !isSidebarCollapsed 
-                    ? 'md:ml-64'
-                    : !hideSidebar && isSidebarCollapsed
-                    ? 'md:ml-20'
-                    : ''
-            }`}>
-                <Header />
-                {children}
-            </main>
-        </div>
+                <main className={`flex-1 overflow-auto transition-all duration-300 ${
+                    !hideSidebar && !isSidebarCollapsed 
+                        ? 'md:ml-64'
+                        : !hideSidebar && isSidebarCollapsed
+                        ? 'md:ml-20'
+                        : ''
+                }`}>
+                    <Header />
+                    {children}
+                </main>
+            </div>
+        </ToastProvider>
     );
 }
