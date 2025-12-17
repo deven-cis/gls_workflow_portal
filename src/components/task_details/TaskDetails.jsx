@@ -16,6 +16,8 @@ import AttorneyOrders from '@/components/task_details/taskSections/AttorneyOrder
 import BillingInfo from '@/components/task_details/taskSections/BillingInfo';
 import EquipmentSection from '@/components/task_details/taskSections/EquipmentSection';
 import { taskAPI } from '@/services/api';
+import { billingAPI } from '@/services/billings_apis';
+import { equipmentTimeAPI } from '@/services/equipment_time_apis';
 import { witnessesAPI } from '@/services/witnesses_apis';
 import { attorneysAPI } from '@/services/attorneys_apis';
 import { useToast } from '@/contexts/ToastContext';
@@ -27,7 +29,9 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const [completedSteps, setCompletedSteps] = useState([]);
     const [formData, setFormData] = useState({ caseName: '', caseNumber: '' });
     const [isCaseEdited, setIsCaseEdited] = useState(false);
-    const lastSavedRef = useRef({ caseName: '', caseNumber: '' })
+    const lastSavedRef = useRef({ caseName: '', caseNumber: '' });
+    const [editingCase, setEditingCase] = useState(false);
+    const [pendingCaseChanges, setPendingCaseChanges] = useState(null);
     const [witnesses, setWitnesses] = useState([]);
     const [addingWitness, setAddingWitness] = useState(false);
     const [newWitnessName, setNewWitnessName] = useState('');
@@ -153,58 +157,77 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         setIsCaseEdited(false);
     }, [caseInfo]);
   
-    const handleCaseFormChange = (next) => {
-        setFormData(next);
-        // only mark dirty if different from last saved snapshot
-        const prev = lastSavedRef.current;
-        if (next.caseName !== prev.caseName || next.caseNumber !== prev.caseNumber) {
-        setIsCaseEdited(true);
+    const handleEditCase = () => {
+        setEditingCase(true);
+        // Store current state as pending changes for cancel
+        setPendingCaseChanges({ ...formData });
+    };
+
+    const handleSaveCase = async (localFormData) => {
+        if (!caseId) return;
+        
+        // Validation: Check if case name and case number are not empty
+        const caseName = (localFormData?.caseName || formData.caseName || '').trim();
+        const caseNumber = (localFormData?.caseNumber || formData.caseNumber || '').trim();
+
+        if (!caseName) {
+            toast.error('Case Name is required');
+            return;
+        }
+
+        if (!caseNumber) {
+            toast.error('Case Number is required');
+            return;
+        }
+        
+        const payload = {
+            case_short_name: caseName,
+            case_number: caseNumber
+        };
+
+        try {
+            await taskAPI.editCase(caseId, payload);
+            // Update formData with saved values
+            setFormData({
+                caseName: caseName,
+                caseNumber: caseNumber
+            });
+            lastSavedRef.current = {
+                caseName: caseName,
+                caseNumber: caseNumber
+            };
+            setEditingCase(false);
+            setPendingCaseChanges(null);
+            setIsCaseEdited(false);
+            toast.success('Case details updated successfully');
+        } catch (err) {
+            console.error('Failed to update case', err);
+            toast.error('Failed to update case details');
         }
     };
 
-    // autosave with dedupe + longer debounce (e.g., 2500ms)
-    useEffect(() => {
-        if (!caseId || !isCaseEdited) return;
-    
-            const payload = {
-            case_short_name: formData.caseName ?? '',
-            case_number: formData.caseNumber ?? ''
-        };
-    
-        // already saved? skip
-        if (
-            payload.case_short_name === lastSavedRef.current.caseName &&
-            payload.case_number === lastSavedRef.current.caseNumber
-        ) {
-            setIsCaseEdited(false);
-            return;
+    const handleCancelCase = () => {
+        if (pendingCaseChanges) {
+            // Restore original values
+            setFormData(pendingCaseChanges);
         }
-    
-        const timer = setTimeout(async () => {
-        try {
-            await taskAPI.editCase(caseId, payload);
-            lastSavedRef.current = {
-            caseName: payload.case_short_name,
-            caseNumber: payload.case_number
-            };
-            setIsCaseEdited(false);
-        } catch (err) {
-            console.error('Failed to update case', err);
-        }
-        }, 2500); // adjust to 2000–3000ms as you prefer
-    
-        return () => clearTimeout(timer);
-    }, [caseId, isCaseEdited, formData.caseName, formData.caseNumber]);
+        setEditingCase(false);
+        setPendingCaseChanges(null);
+    };
 
 
     const [billingInfo, setBillingInfo] = useState({
-        cancelEnRoute: true,
-        cancelSetup: true,
+        cancelEnRoute: false,
+        cancelSetup: false,
         notes: '',
         videographerHours: '',
         fileLengthHours: '',
         documents: []
     });
+    const [editingBilling, setEditingBilling] = useState(false);
+    const [pendingBillingChanges, setPendingBillingChanges] = useState(null);
+    const [billingHasBeenSaved, setBillingHasBeenSaved] = useState(false);
+    const [billingId, setBillingId] = useState(null);
     const [assigneeSearch, setAssigneeSearch] = useState('');
     const [collaboratorSearch, setCollaboratorSearch] = useState('');
 
@@ -231,6 +254,10 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         timeAfterFive: '',
         documents: []
     });
+    const [editingEquipment, setEditingEquipment] = useState(false);
+    const [pendingEquipmentChanges, setPendingEquipmentChanges] = useState(null);
+    const [equipmentHasBeenSaved, setEquipmentHasBeenSaved] = useState(false);
+    const [equipmentTimeId, setEquipmentTimeId] = useState(null);
 
     // Presentational components are implemented in `src/components/task/` to keep the page file focused on state and layout.
 
@@ -315,7 +342,14 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
             }
             
             // Remove from local state
-            setAttorneySections((prev) => prev.filter((s) => s.id !== sectionId));
+            setAttorneySections((prev) => {
+                const updated = prev.filter((s) => s.id !== sectionId);
+                // If all attorneys are deleted, ensure at least one empty form remains
+                if (updated.length === 0) {
+                    return [createAttorneySection('Taking Attorney')];
+                }
+                return updated;
+            });
             if (expandedAttorney === sectionId) {
                 setExpandedAttorney(null);
             }
@@ -431,45 +465,584 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     };
 
     const handleBillingToggle = (field) => {
+        if (!editingBilling) return;
         setBillingInfo((prev) => ({ ...prev, [field]: !prev[field] }));
     };
 
     const handleBillingInputChange = (field, value) => {
+        if (!editingBilling) return;
         setBillingInfo((prev) => ({ ...prev, [field]: value }));
     };
 
     const handleBillingUpload = (file) => {
-        const document = createDocumentMeta(file);
-        if (!document) return;
+        if (!editingBilling) return;
+        const meta = createDocumentMeta(file);
+        if (!meta) return;
+        // Keep File object so we can send it to backend when saving billing
+        const document = { ...meta, file };
         setBillingInfo((prev) => ({ ...prev, documents: [...prev.documents, document] }));
     };
 
     const handleBillingDocumentRemove = (documentId) => {
+        if (!editingBilling) return;
         setBillingInfo((prev) => ({
             ...prev,
             documents: prev.documents.filter((doc) => doc.id !== documentId)
         }));
     };
 
+    const handleEditBilling = () => {
+        setEditingBilling(true);
+        // Store current state as pending changes for cancel (deep copy documents array)
+        setPendingBillingChanges({
+            ...billingInfo,
+            documents: billingInfo.documents.map(doc => ({ ...doc }))
+        });
+    };
+
+    const handleSaveBilling = async () => {
+        const parseHours = (raw) => {
+            if (!raw) return null;
+            const cleaned = String(raw).toLowerCase().replace(/hrs?/, '').trim();
+            if (!cleaned) return null;
+            const num = parseFloat(cleaned);
+            return Number.isNaN(num) ? null : num;
+        };
+
+        const rawVideographerHours = billingInfo.videographerHours?.trim();
+        const rawFileLengthHours = billingInfo.fileLengthHours?.trim();
+
+        const videographerValue = parseHours(rawVideographerHours);
+        const fileLengthValue = parseHours(rawFileLengthHours);
+
+        // Validate videographer hours
+        if (rawVideographerHours && (videographerValue === null || videographerValue < 0)) {
+            toast.error('Videographer hours must be a valid positive number (e.g. 4 or 4hrs)');
+            return;
+        }
+
+        if (rawFileLengthHours && (fileLengthValue === null || fileLengthValue < 0)) {
+            toast.error('File length hours must be a valid positive number (e.g. 8 or 8hrs)');
+            return;
+        }
+
+        // Normalise display to "Xhrs" format like Figma while keeping numeric value validated
+        const normalisedBilling = {
+            ...billingInfo,
+            videographerHours:
+                rawVideographerHours && videographerValue !== null ? `${videographerValue}hrs` : '',
+            fileLengthHours:
+                rawFileLengthHours && fileLengthValue !== null ? `${fileLengthValue}hrs` : '',
+        };
+
+        // Determine which documents were removed (compare with original)
+        const originalDocIds = new Set((pendingBillingChanges?.documents || []).map(doc => doc.id));
+        const currentDocIds = new Set((billingInfo.documents || []).map(doc => doc.id));
+        const documentsToRemove = Array.from(originalDocIds).filter(id => !currentDocIds.has(id));
+
+        // Add documentsToRemove to normalisedBilling for update API
+        if (billingId && documentsToRemove.length > 0) {
+            normalisedBilling.documentsToRemove = documentsToRemove;
+        }
+
+        // Persist billing to backend
+        try {
+            const jobIdParam = searchParams.get('jobId');
+            const jobNo = Number(jobIdParam ?? params?.id);
+            if (!jobNo || Number.isNaN(jobNo)) {
+                toast.error('Unable to determine job number for billing');
+                return;
+            }
+
+            let response;
+            if (billingId) {
+                // Update existing billing - only send changed fields
+                response = await billingAPI.updateBilling(billingId, normalisedBilling, pendingBillingChanges, jobNo);
+                toast.success('Billing information updated successfully');
+            } else {
+                // Create new billing
+                response = await billingAPI.createBilling(jobNo, normalisedBilling);
+                // Store billing ID from response
+                if (response?.result?.id) {
+                    setBillingId(response.result.id);
+                }
+                toast.success('Billing information saved successfully');
+            }
+
+            // Fetch updated billing data to get documents with backend IDs
+            try {
+                const updatedBillingData = await billingAPI.getJobBilling(jobNo);
+                
+                if (updatedBillingData) {
+                    // Map backend response to frontend format with documents
+                    setBillingInfo({
+                        cancelEnRoute: updatedBillingData.cancel_en_route ?? false,
+                        cancelSetup: updatedBillingData.cancel_setup ?? false,
+                        notes: updatedBillingData.billing_notes ?? '',
+                        videographerHours: updatedBillingData.videographer_hours_present ?? '',
+                        fileLengthHours: updatedBillingData.file_hours_length ?? '',
+                        documents: (updatedBillingData.documents || []).map((doc) => ({
+                            id: doc.id || `doc-${doc.id}-${Date.now()}`,
+                            name: doc.file_name || doc.name || 'Unknown',
+                            size: doc.size || 0,
+                            type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                            uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                            backendId: doc.id,
+                            filePath: doc.file_path
+                        }))
+                    });
+                    if (updatedBillingData.id) {
+                        setBillingId(updatedBillingData.id);
+                    }
+                } else {
+                    // Fallback: Update local state - remove file objects and documentsToRemove after successful save
+                    const cleanedBilling = {
+                        ...normalisedBilling,
+                        documents: normalisedBilling.documents
+                            .filter(doc => !documentsToRemove.includes(doc.id))
+                            .map(doc => {
+                                const { file, ...docWithoutFile } = doc;
+                                return docWithoutFile;
+                            })
+                    };
+                    delete cleanedBilling.documentsToRemove;
+                    setBillingInfo(cleanedBilling);
+                }
+            } catch (fetchErr) {
+                // If fetch fails, use fallback approach
+                console.warn('Failed to fetch updated billing data after save, using local state:', fetchErr);
+                const cleanedBilling = {
+                    ...normalisedBilling,
+                    documents: normalisedBilling.documents
+                        .filter(doc => !documentsToRemove.includes(doc.id))
+                        .map(doc => {
+                            const { file, ...docWithoutFile } = doc;
+                            return docWithoutFile;
+                        })
+                };
+                delete cleanedBilling.documentsToRemove;
+                setBillingInfo(cleanedBilling);
+            }
+
+            setEditingBilling(false);
+            setPendingBillingChanges(null);
+            setBillingHasBeenSaved(true);
+        } catch (err) {
+            console.error('Failed to save billing information:', err);
+            toast.error(billingId ? 'Failed to update billing information' : 'Failed to save billing information');
+        }
+    };
+
+    const handleCancelBilling = () => {
+        if (billingId && pendingBillingChanges) {
+            // For existing billing, restore original values and exit edit mode
+            setBillingInfo(pendingBillingChanges);
+            setEditingBilling(false);
+            setPendingBillingChanges(null);
+        } else {
+            // For new billing, reset to empty form and collapse the section
+            const emptyBilling = {
+                cancelEnRoute: false,
+                cancelSetup: false,
+                notes: '',
+                videographerHours: '',
+                fileLengthHours: '',
+                documents: []
+            };
+            setBillingInfo(emptyBilling);
+            setPendingBillingChanges(null);
+            setEditingBilling(false);
+            // Collapse the billing section (step 4)
+            setExpandedStep(expandedStep === 4 ? null : expandedStep);
+        }
+    };
+
+    const handleDeleteBilling = async () => {
+        try {
+            // If billing exists in backend, delete it
+            if (billingId) {
+                const response = await billingAPI.deleteBilling(billingId);
+                
+                // Check backend response
+                if (response?.success === false) {
+                    toast.error(response?.message || 'Failed to delete billing information');
+                    return;
+                }
+                
+                // Success response from backend
+                if (response?.success === true) {
+                    toast.success(response?.message || 'Billing information deleted successfully');
+                }
+            } else {
+                // No billing ID means it was never saved, just reset local state
+                toast.success('Billing information cleared');
+            }
+            
+            // Reset to empty billing form with Save/Cancel buttons
+            const emptyBilling = {
+                cancelEnRoute: false,
+                cancelSetup: false,
+                notes: '',
+                videographerHours: '',
+                fileLengthHours: '',
+                documents: []
+            };
+            setBillingInfo(emptyBilling);
+            setEditingBilling(true); // Show Save/Cancel buttons after delete
+            setPendingBillingChanges(emptyBilling);
+            setBillingHasBeenSaved(false);
+            setBillingId(null);
+        } catch (err) {
+            console.error('Failed to delete billing information:', err);
+            const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete billing information';
+            toast.error(errorMessage);
+        }
+    };
+
     const handleEquipmentCheckbox = (field) => {
+        if (!editingEquipment) return;
         setEquipmentInfo((prev) => ({ ...prev, [field]: !prev[field] }));
     };
 
     const handleEquipmentInputChange = (field, value) => {
-        setEquipmentInfo((prev) => ({ ...prev, [field]: value }));
+        if (!editingEquipment) return;
+        
+        // For parking cost, only allow numbers and decimal point
+        if (field === 'parkingCost') {
+            // Remove any non-numeric characters except decimal point
+            const numericValue = value.replace(/[^0-9.]/g, '');
+            // Ensure only one decimal point
+            const parts = numericValue.split('.');
+            const sanitizedValue = parts.length > 2 
+                ? parts[0] + '.' + parts.slice(1).join('') 
+                : numericValue;
+            setEquipmentInfo((prev) => ({ ...prev, [field]: sanitizedValue }));
+        } else {
+            setEquipmentInfo((prev) => ({ ...prev, [field]: value }));
+        }
     };
 
     const handleEquipmentUpload = (file) => {
+        if (!editingEquipment) return;
         const document = createDocumentMeta(file);
         if (!document) return;
-        setEquipmentInfo((prev) => ({ ...prev, documents: [...prev.documents, document] }));
+        // Add file object to document so it can be sent to backend
+        const documentWithFile = { ...document, file };
+        setEquipmentInfo((prev) => ({ ...prev, documents: [...prev.documents, documentWithFile] }));
     };
 
     const handleEquipmentDocumentRemove = (documentId) => {
+        if (!editingEquipment) return;
         setEquipmentInfo((prev) => ({
             ...prev,
             documents: prev.documents.filter((doc) => doc.id !== documentId)
         }));
+    };
+
+    const handleEditEquipment = () => {
+        setEditingEquipment(true);
+        // Store current state as pending changes for cancel
+        setPendingEquipmentChanges({
+            ...equipmentInfo,
+            documents: equipmentInfo.documents.map(doc => ({ ...doc }))
+        });
+    };
+
+    const handleSaveEquipment = async () => {
+        // Validate parking cost if provided
+        if (equipmentInfo.parkingCost && equipmentInfo.parkingCost.trim()) {
+            const parkingValue = parseFloat(equipmentInfo.parkingCost);
+            if (isNaN(parkingValue) || parkingValue < 0) {
+                toast.error('Parking cost must be a valid positive number');
+                return;
+            }
+        }
+
+        // Validate time after 5PM if provided
+        if (equipmentInfo.timeAfterFive && equipmentInfo.timeAfterFive.trim()) {
+            // Time format validation (HH:MM)
+            const timePattern = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+            if (!timePattern.test(equipmentInfo.timeAfterFive)) {
+                toast.error('Time After 5PM must be in valid format (HH:MM)');
+                return;
+            }
+        }
+
+        // Determine which documents were removed (compare with original)
+        // Use backendId for documents that came from backend, id for new documents
+        const originalDocIds = new Set((pendingEquipmentChanges?.documents || []).map(doc => doc.backendId || doc.id));
+        const currentDocIds = new Set((equipmentInfo.documents || []).map(doc => doc.backendId || doc.id));
+        const documentsToRemove = Array.from(originalDocIds)
+            .filter(id => !currentDocIds.has(id))
+            .filter(id => {
+                // Only include documents that have a backendId (were saved to backend)
+                // New documents without backendId don't need to be removed from backend
+                const originalDoc = (pendingEquipmentChanges?.documents || []).find(doc => (doc.backendId || doc.id) === id);
+                return originalDoc?.backendId != null;
+            })
+            .map(id => {
+                // Get the backendId for removal
+                const originalDoc = (pendingEquipmentChanges?.documents || []).find(doc => (doc.backendId || doc.id) === id);
+                return originalDoc?.backendId || id;
+            });
+
+        // Add documentsToRemove to equipmentInfo for update API
+        const equipmentData = { ...equipmentInfo };
+        if (equipmentTimeId && documentsToRemove.length > 0) {
+            equipmentData.documentsToRemove = documentsToRemove;
+        }
+
+        // Persist equipment time to backend
+        try {
+            const jobIdParam = searchParams.get('jobId');
+            const jobNo = Number(jobIdParam ?? params?.id);
+            if (!jobNo || Number.isNaN(jobNo)) {
+                toast.error('Unable to determine job number for equipment time');
+                return;
+            }
+
+            let response;
+            if (equipmentTimeId) {
+                // Update existing equipment time - only send changed fields
+                response = await equipmentTimeAPI.updateEquipmentTime(equipmentTimeId, equipmentData, pendingEquipmentChanges, jobNo);
+                toast.success('Equipment time updated successfully');
+            } else {
+                // Create new equipment time
+                response = await equipmentTimeAPI.createEquipmentTime(jobNo, equipmentData);
+                // Store equipment time ID from response
+                if (response?.result?.id) {
+                    setEquipmentTimeId(response.result.id);
+                }
+                toast.success('Equipment time saved successfully');
+            }
+
+            // Fetch updated equipment data to get documents with backend IDs
+            // Add a small delay to ensure backend has processed the documents
+            try {
+                // Wait a bit for backend to process documents
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                const updatedEquipmentData = await equipmentTimeAPI.getJobEquipmentTime(jobNo);
+                
+                if (updatedEquipmentData) {
+                    console.log('Fetched equipment data after save:', updatedEquipmentData);
+                    console.log('Documents from backend:', updatedEquipmentData.documents);
+                    
+                    // Map backend response to frontend format with documents
+                    const mappedDocuments = (updatedEquipmentData.documents || []).map((doc) => {
+                        // Use doc.id as the primary id, fallback to generated id if missing
+                        const docId = doc.id ? `doc-${doc.id}` : `doc-${Date.now()}-${Math.random()}`;
+                        const mappedDoc = {
+                            id: docId,
+                            name: doc.file_name || doc.name || 'Unknown',
+                            size: doc.size || 0,
+                            type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                            uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                            backendId: doc.id, // Store backend ID separately
+                            filePath: doc.file_path
+                        };
+                        console.log('Mapped document:', mappedDoc);
+                        return mappedDoc;
+                    });
+                    
+                    console.log('Mapped documents array:', mappedDocuments);
+                    
+                    setEquipmentInfo({
+                        laptopUsed: updatedEquipmentData.laptop_used ?? false,
+                        pipUsed: updatedEquipmentData.pip_used ?? false,
+                        exhibitTech: updatedEquipmentData.exhibit_tech ?? false,
+                        parkingCost: updatedEquipmentData.parking_cost ? String(updatedEquipmentData.parking_cost) : '',
+                        timeAfterFive: updatedEquipmentData.time_after ?? '',
+                        documents: mappedDocuments
+                    });
+                    if (updatedEquipmentData.id) {
+                        setEquipmentTimeId(updatedEquipmentData.id);
+                    }
+                } else {
+                    console.warn('No equipment data returned after save');
+                    // Fallback: Update local state - remove file objects and documentsToRemove after successful save
+                    const cleanedEquipment = {
+                        ...equipmentData,
+                        documents: equipmentData.documents
+                            .filter(doc => !documentsToRemove.includes(doc.id))
+                            .map(doc => {
+                                const { file, ...docWithoutFile } = doc;
+                                return docWithoutFile;
+                            })
+                    };
+                    delete cleanedEquipment.documentsToRemove;
+                    setEquipmentInfo(cleanedEquipment);
+                }
+            } catch (fetchErr) {
+                // If fetch fails, use fallback approach
+                console.warn('Failed to fetch updated equipment data after save, using local state:', fetchErr);
+                const cleanedEquipment = {
+                    ...equipmentData,
+                    documents: equipmentData.documents
+                        .filter(doc => !documentsToRemove.includes(doc.id))
+                        .map(doc => {
+                            const { file, ...docWithoutFile } = doc;
+                            return docWithoutFile;
+                        })
+                };
+                delete cleanedEquipment.documentsToRemove;
+                setEquipmentInfo(cleanedEquipment);
+            }
+
+            setEditingEquipment(false);
+            setPendingEquipmentChanges(null);
+            setEquipmentHasBeenSaved(true);
+        } catch (err) {
+            console.error('Failed to save equipment time:', err);
+            toast.error(equipmentTimeId ? 'Failed to update equipment time' : 'Failed to save equipment time');
+        }
+    };
+
+    const handleCancelEquipment = () => {
+        if (equipmentTimeId && pendingEquipmentChanges) {
+            // For existing equipment, restore original values and exit edit mode
+            setEquipmentInfo(pendingEquipmentChanges);
+            setEditingEquipment(false);
+            setPendingEquipmentChanges(null);
+        } else {
+            // For new equipment, reset to empty form and collapse the section
+            const emptyEquipment = {
+                laptopUsed: false,
+                pipUsed: false,
+                exhibitTech: false,
+                parkingCost: '',
+                timeAfterFive: '',
+                documents: []
+            };
+            setEquipmentInfo(emptyEquipment);
+            setPendingEquipmentChanges(null);
+            setEditingEquipment(false);
+            // Collapse the equipment section (step 5)
+            setExpandedStep(expandedStep === 5 ? null : expandedStep);
+        }
+    };
+
+    const handleDeleteEquipment = async () => {
+        try {
+            // If equipment time exists in backend, delete it
+            if (equipmentTimeId) {
+                const response = await equipmentTimeAPI.deleteEquipmentTime(equipmentTimeId);
+                
+                // Check backend response
+                if (response?.success === false) {
+                    toast.error(response?.message || 'Failed to delete equipment time');
+                    return;
+                }
+                
+                // Success response from backend
+                if (response?.success === true) {
+                    toast.success(response?.message || 'Equipment time deleted successfully');
+                }
+            } else {
+                // No equipment time ID means it was never saved, just reset local state
+                toast.success('Equipment time cleared');
+            }
+            
+            // Reset to empty equipment form with Save/Cancel buttons
+            const emptyEquipment = {
+                laptopUsed: false,
+                pipUsed: false,
+                exhibitTech: false,
+                parkingCost: '',
+                timeAfterFive: '',
+                documents: []
+            };
+            setEquipmentInfo(emptyEquipment);
+            setEditingEquipment(true); // Show Save/Cancel buttons after delete
+            setPendingEquipmentChanges(emptyEquipment);
+            setEquipmentHasBeenSaved(false);
+            setEquipmentTimeId(null);
+        } catch (err) {
+            console.error('Failed to delete equipment time:', err);
+            const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete equipment time';
+            toast.error(errorMessage);
+        }
+    };
+
+    const fetchEquipmentData = async () => {
+        if (!selectedJobId) return;
+        
+        try {
+            // Get equipment time by job_no (backend endpoint: GET /equipment-time/get/{job_no})
+            const equipmentData = await equipmentTimeAPI.getJobEquipmentTime(selectedJobId);
+            
+            if (equipmentData) {
+                // Map backend response to frontend format
+                // Backend returns: { id, job_no, laptop_used, pip_used, exhibit_tech, 
+                //                  parking_cost, time_after, documents: [...] }
+                setEquipmentInfo({
+                    laptopUsed: equipmentData.laptop_used ?? false,
+                    pipUsed: equipmentData.pip_used ?? false,
+                    exhibitTech: equipmentData.exhibit_tech ?? false,
+                    parkingCost: equipmentData.parking_cost ? String(equipmentData.parking_cost) : '',
+                    timeAfterFive: equipmentData.time_after ?? '',
+                    documents: (equipmentData.documents || []).map((doc) => ({
+                        id: doc.id || `doc-${doc.id}-${Date.now()}`,
+                        name: doc.file_name || doc.name || 'Unknown',
+                        size: doc.size || 0,
+                        type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                        uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                        backendId: doc.id,
+                        filePath: doc.file_path
+                    }))
+                });
+                setEquipmentTimeId(equipmentData.id);
+                setEquipmentHasBeenSaved(true);
+                setEditingEquipment(false); // Show Edit/Delete buttons when equipment exists
+            } else {
+                // No equipment data exists - show empty form with Save/Cancel buttons
+                setEquipmentInfo({
+                    laptopUsed: false,
+                    pipUsed: false,
+                    exhibitTech: false,
+                    parkingCost: '',
+                    timeAfterFive: '',
+                    documents: []
+                });
+                setEquipmentTimeId(null);
+                setEquipmentHasBeenSaved(false);
+                setEditingEquipment(true); // Show Save/Cancel buttons when no equipment exists
+                setPendingEquipmentChanges({
+                    laptopUsed: false,
+                    pipUsed: false,
+                    exhibitTech: false,
+                    parkingCost: '',
+                    timeAfterFive: '',
+                    documents: []
+                });
+            }
+        } catch (err) {
+            // Only log actual errors (not 404s/500s, which are handled in the API)
+            // This catch block handles unexpected errors like network failures
+            if (err?.status !== 404 && err?.status !== 500) {
+                console.error('Unexpected error fetching equipment time data:', err);
+            }
+            // Show empty form with Save/Cancel buttons on error
+            setEquipmentInfo({
+                laptopUsed: false,
+                pipUsed: false,
+                exhibitTech: false,
+                parkingCost: '',
+                timeAfterFive: '',
+                documents: []
+            });
+            setEquipmentTimeId(null);
+            setEquipmentHasBeenSaved(false);
+            setEditingEquipment(true); // Show Save/Cancel buttons when no equipment exists
+            setPendingEquipmentChanges({
+                laptopUsed: false,
+                pipUsed: false,
+                exhibitTech: false,
+                parkingCost: '',
+                timeAfterFive: '',
+                documents: []
+            });
+        }
     };
 
     // Mock task data
@@ -488,6 +1061,92 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         { number: 5, title: 'Equipment & Time', done: false }
     ];
 
+    const fetchBillingData = async () => {
+        if (!selectedJobId) return;
+        
+        try {
+            // Get billing by job_no (backend endpoint: GET /billings/get/{job_no})
+            const billingData = await billingAPI.getJobBilling(selectedJobId);
+            
+            if (billingData && billingData.id) {
+                // Billing exists - map backend response to frontend format
+                // Backend returns: { id, job_no, cancel_en_route, cancel_setup, billing_notes, 
+                //                  videographer_hours_present, file_hours_length, documents: [...] }
+                setBillingInfo({
+                    cancelEnRoute: billingData.cancel_en_route ?? false,
+                    cancelSetup: billingData.cancel_setup ?? false,
+                    notes: billingData.billing_notes ?? '',
+                    videographerHours: billingData.videographer_hours_present ?? '',
+                    fileLengthHours: billingData.file_hours_length ?? '',
+                    documents: (billingData.documents || []).map((doc) => ({
+                        id: doc.id || `doc-${doc.id}-${Date.now()}`,
+                        name: doc.file_name || doc.name || 'Unknown',
+                        size: doc.size || 0,
+                        type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                        uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                        backendId: doc.id,
+                        filePath: doc.file_path
+                    }))
+                });
+                setBillingId(billingData.id);
+                setBillingHasBeenSaved(true);
+                setEditingBilling(false); // Show Edit/Delete buttons when billing exists
+            } else {
+                // No billing data exists - show empty form with Save/Cancel buttons
+                setBillingInfo({
+                    cancelEnRoute: false,
+                    cancelSetup: false,
+                    notes: '',
+                    videographerHours: '',
+                    fileLengthHours: '',
+                    documents: []
+                });
+                setBillingId(null);
+                setBillingHasBeenSaved(false);
+                setEditingBilling(true); // Show Save/Cancel buttons when no billing exists
+                setPendingBillingChanges({
+                    cancelEnRoute: false,
+                    cancelSetup: false,
+                    notes: '',
+                    videographerHours: '',
+                    fileLengthHours: '',
+                    documents: []
+                });
+            }
+        } catch (err) {
+            // Only log actual errors (not 404s, which are handled in the API)
+            // This catch block handles unexpected errors like network failures
+            console.error('Unexpected error fetching billing data:', err);
+            // Show empty form with Save/Cancel buttons on error
+            setBillingInfo({
+                cancelEnRoute: false,
+                cancelSetup: false,
+                notes: '',
+                videographerHours: '',
+                fileLengthHours: '',
+                documents: []
+            });
+            setBillingId(null);
+            setBillingHasBeenSaved(false);
+            setEditingBilling(true); // Show Save/Cancel buttons when no billing exists
+            setPendingBillingChanges({
+                cancelEnRoute: false,
+                cancelSetup: false,
+                notes: '',
+                videographerHours: '',
+                fileLengthHours: '',
+                documents: []
+            });
+        }
+    };
+
+    // Fetch billing data on initial load
+    useEffect(() => {
+        if (!selectedJobId) return;
+        fetchBillingData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedJobId]);
+
     const toggleStep = (stepNumber) => {
         const isExpanding = expandedStep !== stepNumber;
         setExpandedStep(expandedStep === stepNumber ? null : stepNumber);
@@ -496,9 +1155,72 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         if (stepNumber === 3 && isExpanding && !expandedAttorney && attorneySections.length > 0) {
             setExpandedAttorney(attorneySections[0].id);
         }
+        
+        // Fetch billing data when Billing section is opened (if not already loaded)
+        // This will set the appropriate state (edit mode for new, view mode for existing)
+        if (stepNumber === 4 && isExpanding && selectedJobId && !billingId) {
+            // Fetch billing data - it will set edit mode if no billing exists
+            fetchBillingData();
+        } else if (stepNumber === 4 && isExpanding && !selectedJobId && !billingId) {
+            // If no jobId but section is opening, show empty form with Save/Cancel
+            setEditingBilling(true);
+            setPendingBillingChanges({
+                ...billingInfo,
+                documents: billingInfo.documents.map(doc => ({ ...doc }))
+            });
+        }
+        
+        // Auto-enable edit mode when Equipment section is first opened
+        if (stepNumber === 5 && isExpanding && !equipmentHasBeenSaved) {
+            setEditingEquipment(true);
+            setPendingEquipmentChanges({
+                ...equipmentInfo,
+                documents: equipmentInfo.documents.map(doc => ({ ...doc }))
+            });
+        }
+        
+        // Fetch equipment data when Equipment section is opened (if not already loaded)
+        if (stepNumber === 5 && isExpanding && selectedJobId && !equipmentTimeId && equipmentHasBeenSaved === false) {
+            fetchEquipmentData();
+        }
     };
 
     const toggleStepDone = (stepNumber) => {
+        // If marking step 3 (Attorney Orders) as done, validate all attorney forms first
+        if (stepNumber === 3 && !completedSteps.includes(stepNumber)) {
+            // Check if there are any attorneys
+            if (attorneySections.length === 0) {
+                toast.error('Please add at least one attorney before marking as done');
+                return;
+            }
+            
+            // Check if all attorney sections are complete
+            const isSectionValid = (section) => {
+                return (
+                    section.fields.attorneyName?.trim() &&
+                    section.fields.firmName?.trim() &&
+                    section.fields.notes?.trim() &&
+                    section.fields.orderDetails?.trim()
+                );
+            };
+            
+            const incompleteSections = attorneySections.filter(section => !isSectionValid(section));
+            
+            if (incompleteSections.length > 0) {
+                // Get display names for incomplete sections
+                const incompleteNames = incompleteSections.map(section => {
+                    return section.fields.attorneyName?.trim() || section.title;
+                });
+                
+                const message = incompleteSections.length === 1
+                    ? `Please complete "${incompleteNames[0]}" form before marking as done`
+                    : `Please complete all incomplete forms (${incompleteNames.join(', ')}) before marking as done`;
+                
+                toast.error(message);
+                return;
+            }
+        }
+        
         if (completedSteps.includes(stepNumber)) {
             setCompletedSteps(completedSteps.filter(s => s !== stepNumber));
         } else {
@@ -744,7 +1466,13 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                 {expandedStep === step.number && (
                                     <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-4">
                                         {step.number === 1 && (
-                                            <CaseDetails formData={formData} onChange={handleCaseFormChange} />
+                                            <CaseDetails 
+                                                formData={formData} 
+                                                editingCase={editingCase}
+                                                handleEditCase={handleEditCase}
+                                                handleSaveCase={handleSaveCase}
+                                                handleCancelCase={handleCancelCase}
+                                            />
                                         )}
                                         {step.number === 2 && (
                                             <WitnessManagement
@@ -789,6 +1517,12 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleBillingInputChange={handleBillingInputChange}
                                                 handleBillingUpload={handleBillingUpload}
                                                 handleBillingDocumentRemove={handleBillingDocumentRemove}
+                                                editingBilling={editingBilling}
+                                                handleEditBilling={handleEditBilling}
+                                                handleSaveBilling={handleSaveBilling}
+                                                handleCancelBilling={handleCancelBilling}
+                                                handleDeleteBilling={handleDeleteBilling}
+                                                billingId={billingId}
                                             />
                                         )}
                                         {step.number === 5 && (
@@ -798,6 +1532,12 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleEquipmentInputChange={handleEquipmentInputChange}
                                                 handleEquipmentUpload={handleEquipmentUpload}
                                                 handleEquipmentDocumentRemove={handleEquipmentDocumentRemove}
+                                                editingEquipment={editingEquipment}
+                                                handleEditEquipment={handleEditEquipment}
+                                                handleSaveEquipment={handleSaveEquipment}
+                                                handleCancelEquipment={handleCancelEquipment}
+                                                handleDeleteEquipment={handleDeleteEquipment}
+                                                equipmentTimeId={equipmentTimeId}
                                             />
                                         )}
                                     </div>

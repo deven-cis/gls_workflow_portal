@@ -101,14 +101,29 @@ export default function AttorneyOrders({
     };
 
     const toggleExpand = (sectionId) => {
-        // Allow collapse even when editing - if editing, just close edit mode
-        if (editingAttorney === sectionId) {
-            setEditingAttorney(null);
-            setPendingChanges((prev) => {
-                const next = { ...prev };
-                delete next[sectionId];
-                return next;
-            });
+        const section = attorneySections.find(s => s.id === sectionId);
+        const isValid = section ? isSectionValid(section) : false;
+        
+        // If collapsing and all mandatory fields are filled, show complete status
+        if (expandedAttorney === sectionId) {
+            // Collapsing - check if section is valid
+            if (isValid && editingAttorney === sectionId) {
+                // All fields are complete, close edit mode to show complete status
+                setEditingAttorney(null);
+                setPendingChanges((prev) => {
+                    const next = { ...prev };
+                    delete next[sectionId];
+                    return next;
+                });
+            } else if (editingAttorney === sectionId) {
+                // Not complete, just close edit mode
+                setEditingAttorney(null);
+                setPendingChanges((prev) => {
+                    const next = { ...prev };
+                    delete next[sectionId];
+                    return next;
+                });
+            }
         }
         setExpandedAttorney(expandedAttorney === sectionId ? null : sectionId);
     };
@@ -207,7 +222,7 @@ export default function AttorneyOrders({
                                             <Edit3 className="w-4 h-4 text-gray-500" />
                                         </button>
                                     )}
-                                    {index > 0 && !isEditing && (
+                                    {!isEditing && (
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();

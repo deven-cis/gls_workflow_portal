@@ -1,14 +1,15 @@
 import React from 'react';
 import { Check } from 'lucide-react';
 
-export default function CheckboxOption({ label, description, checked, onChange }) {
+export default function CheckboxOption({ label, description, checked, onChange, disabled = false }) {
   return (
     <button
       type="button"
-      onClick={onChange}
+      onClick={disabled ? undefined : onChange}
+      disabled={disabled}
       className={`flex h-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
         checked ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
-      }`}
+      } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
     >
       <span
         className={`flex h-5 w-5 items-center justify-center rounded border ${

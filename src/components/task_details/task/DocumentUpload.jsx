@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Trash2 } from 'lucide-react';
+import { useToast } from '@/contexts/ToastContext';
 
 export default function DocumentUpload({
   title,
@@ -9,14 +10,113 @@ export default function DocumentUpload({
   onUpload,
   documents = [],
   onRemoveDocument,
-  disabled = false
+  disabled = false,
+  multiple = false,
+  twoColumnLayout = false
 }) {
   const hasDocuments = documents.length > 0;
+  const [isDragging, setIsDragging] = useState(false);
+  const toast = useToast();
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!disabled) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const validateFile = (file) => {
+    // Validate file type if accept prop is provided
+    if (accept) {
+      const acceptedTypes = accept.split(',').map(type => type.trim().toLowerCase());
+      const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
+      const fileType = file.type.toLowerCase();
+      
+      const isValidType = acceptedTypes.some(acceptedType => {
+        if (acceptedType.startsWith('.')) {
+          return acceptedType === fileExtension;
+        }
+        return acceptedType === fileType;
+      });
+
+      if (!isValidType) {
+        toast.error(`Invalid file type: ${file.name}. Please upload ${accept}`);
+        return false;
+      }
+    }
+
+    // Validate file size (5MB limit)
+    const maxSize = 5 * 1024 * 1024; // 5MB in bytes
+    if (file.size > maxSize) {
+      toast.error(`File size exceeds 5MB limit: ${file.name}. Please upload a file smaller than 5MB.`);
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (disabled) return;
+
+    const files = Array.from(e.dataTransfer.files);
+    if (files && files.length > 0) {
+      if (multiple) {
+        // Handle multiple files
+        const validFiles = files.filter(file => validateFile(file));
+        validFiles.forEach(file => onUpload(file));
+      } else {
+        // Handle single file (only first file)
+        const file = files[0];
+        if (validateFile(file)) {
+          onUpload(file);
+        }
+      }
+    }
+  };
+
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      if (multiple) {
+        // Handle multiple files
+        const validFiles = files.filter(file => validateFile(file));
+        validFiles.forEach(file => onUpload(file));
+      } else {
+        // Handle single file (only first file)
+        const file = files[0];
+        if (validateFile(file)) {
+          onUpload(file);
+        }
+      }
+      e.target.value = '';
+    }
+  };
   
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-      {!hasDocuments && (
-        <div className="flex flex-wrap items-center justify-between gap-4">
+    <div 
+      className={`rounded-xl border-2 p-4 transition-colors ${
+        isDragging && !disabled
+          ? 'border-blue-500 bg-blue-50'
+          : 'border-gray-200 bg-gray-50'
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Upload area - always show for multiple, or show when no documents for single */}
+      {(!hasDocuments || multiple) && (
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-full border border-gray-300 text-blue-500">
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -38,20 +138,17 @@ export default function DocumentUpload({
               <input
                 type="file"
                 accept={accept}
+                multiple={multiple}
                 className="hidden"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    onUpload(e.target.files[0]);
-                    e.target.value = '';
-                  }
-                }}
+                onChange={handleFileSelect}
               />
             )}
           </label>
         </div>
       )}
+      {/* Documents list - show when documents exist */}
       {hasDocuments && (
-        <div className="space-y-3">
+        <div className={twoColumnLayout ? 'grid gap-3 md:grid-cols-2' : 'space-y-3'}>
           {documents.map((document) => {
             const extension = document.name.split('.').pop()?.toUpperCase() || 'DOC';
             let fileDate = '';

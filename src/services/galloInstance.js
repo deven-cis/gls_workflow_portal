@@ -216,11 +216,15 @@ export const galloInstance = async (endpoint, options = {}) => {
         err.body = body;
         throw err;
       }
-  
+
       // return parsed JSON when possible, otherwise raw text
       return typeof body === 'string' && !contentType.includes('application/json') ? { data: body } : body;
     } catch (error) {
-      console.error(`API Call Failed: ${endpoint}`, error);
+      // Don't log 404 errors - they're expected for resources that don't exist yet
+      // (e.g., billing/equipment time that hasn't been created)
+      if (error?.status !== 404) {
+        console.error(`API Call Failed: ${endpoint}`, error);
+      }
       throw error;
     }
   };
