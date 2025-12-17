@@ -18,6 +18,7 @@ export default function TaskDetailsPage() {
     (async () => {
       try {
         const data = await taskAPI.getCaseById(taskCaseId);
+        console.log('Fetched case info:', data);
         setCaseInfo(data);
       } catch (err) {
         console.error('Failed to fetch case info:', err);

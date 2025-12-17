@@ -18,13 +18,15 @@ const buildEquipmentTimeFormData = (equipmentInfo, jobNo = null) => {
     if (equipmentInfo.timeAfterFive) {
         formData.append('time_after', equipmentInfo.timeAfterFive);
     }
-
+    console.log('equipmentInfo for equipment time', equipmentInfo);
     // Attach new/additional documents (files that have File objects)
     (equipmentInfo.documents || []).forEach((doc) => {
+        console.log('doc for equipment time', doc);
         if (doc.file) {
             formData.append('files', doc.file);
         }
     });
+    console.log('formData for equipment time', formData);
     return formData;
 };
 

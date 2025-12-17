@@ -167,16 +167,31 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         if (!caseId) return;
         
         // Validation: Check if case name and case number are not empty
-        const caseName = (localFormData?.caseName || formData.caseName || '').trim();
-        const caseNumber = (localFormData?.caseNumber || formData.caseNumber || '').trim();
+        // Use localFormData if it exists (even if empty string), otherwise fall back to formData
+        // Important: Empty string is a valid value that should be used, not fallback to formData
+        const caseNameRaw = localFormData?.hasOwnProperty('caseName')
+            ? localFormData.caseName 
+            : (formData?.caseName ?? '');
+        const caseNumberRaw = localFormData?.hasOwnProperty('caseNumber')
+            ? localFormData.caseNumber 
+            : (formData?.caseNumber ?? '');
+        
+        // Convert to string and trim
+        const caseName = String(caseNameRaw).trim();
+        const caseNumber = String(caseNumberRaw).trim();
 
+        // Collect all validation errors
+        const errors = [];
         if (!caseName) {
-            toast.error('Case Name is required');
-            return;
+            errors.push('Case Name is required');
+        }
+        if (!caseNumber) {
+            errors.push('Case Number is required');
         }
 
-        if (!caseNumber) {
-            toast.error('Case Number is required');
+        // Show all validation errors
+        if (errors.length > 0) {
+            errors.forEach(error => toast.error(error));
             return;
         }
         

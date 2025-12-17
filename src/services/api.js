@@ -36,11 +36,32 @@ export const taskAPI = {
     return galloInstance(`/tasks${params ? `?${params}` : ''}`);
   },
 
-  // Get task by ID
+  // Get case by ID
+  // Backend endpoint: GET /case/get/{case_id}
+  // Returns null if case doesn't exist (404) - this is not an error, just means case not found
   getCaseById: async (caseId) => {
-    const data = await galloInstance(`/case/get/${caseId}`);
-    console.log('Case data:', data);
-    return data;
+    try {
+      const response = await galloInstance(`/case/get/${caseId}`);
+      
+      // Backend returns: { status_code, message, success, result }
+      if (response && response.success && response.result) {
+        return response.result;
+      }
+      
+      // If response structure is different, return the whole response
+      return response;
+    } catch (err) {
+      // Handle 404 as "no case found" - not an error, just means case doesn't exist
+      if (err?.status === 404 || 
+          err?.message?.includes('404') || 
+          err?.message?.includes('not found') ||
+          err?.message?.includes('Case')) {
+        console.log(`No case found for case_id ${caseId} - this is expected if case doesn't exist`);
+        return null;
+      }
+      // Re-throw other errors
+      throw err;
+    }
   },
 
   editCase: async (caseId, caseData) => {

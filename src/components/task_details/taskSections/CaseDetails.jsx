@@ -66,7 +66,7 @@ export default function CaseDetails({
                         Case Number <span className="text-red-600">*</span>
                     </label>
                     <input
-                        type="text"
+                        type="number"
                         value={localFormData.caseNumber}
                         onChange={(e) => handleInputChange('caseNumber', e.target.value)}
                         disabled={!editingCase}
