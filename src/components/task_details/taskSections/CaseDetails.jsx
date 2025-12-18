@@ -58,7 +58,7 @@ export default function CaseDetails({
                         className={`w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:border-gray-300 outline-none ${
                             !editingCase ? 'bg-gray-50 cursor-not-allowed' : ''
                         }`}
-                        placeholder="Johnson vs. Smith Deposition"
+                        placeholder=""
                     />
                 </div>
                 <div>
@@ -73,7 +73,7 @@ export default function CaseDetails({
                         className={`w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:border-gray-300 outline-none ${
                             !editingCase ? 'bg-gray-50 cursor-not-allowed' : ''
                         }`}
-                        placeholder="72364"
+                        placeholder=""
                     />
                 </div>
             </div>

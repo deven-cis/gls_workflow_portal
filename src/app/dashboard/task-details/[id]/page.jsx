@@ -32,7 +32,7 @@ export default function TaskDetailsPage() {
       try {
         const data = await witnessesAPI.getJobWitnesses(selectedJobId);
         console.log('Fetched witnesses data:', data);
-        setWitnessesData(Array.isArray(data) ? data : []);
+        setWitnessesData(data);
       } catch (err) {
         console.error('Failed to fetch witnesses:', err);
       }

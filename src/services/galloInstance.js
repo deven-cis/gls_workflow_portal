@@ -120,7 +120,13 @@ export const galloInstance = async (endpoint, options = {}) => {
     console.log('Token:', token);
     
     // Check if body is FormData - if so, don't set Content-Type (browser will set it with boundary)
-    const isFormData = options.body instanceof FormData;
+    // Be robust: instanceof can fail across realms/polyfills
+    const isFormData =
+        (typeof FormData !== 'undefined' && options.body instanceof FormData) ||
+        (!!options.body &&
+            typeof options.body === 'object' &&
+            typeof options.body.append === 'function' &&
+            typeof options.body.get === 'function');
     
     const config = {
       headers: {

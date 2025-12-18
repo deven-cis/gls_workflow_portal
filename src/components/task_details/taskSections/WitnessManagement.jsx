@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import TimeInput from '@/components/task_details/task/TimeInput';
 import AddActionButton from '@/components/task_details/task/AddActionButton';
-import { Trash2, Edit3, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trash2, Edit3, ChevronDown, ChevronUp, Clock, Download } from 'lucide-react';
 
 export default function WitnessManagement({
     witnesses,
@@ -24,7 +24,8 @@ export default function WitnessManagement({
     onSaveWitnesses,
     onCancelWitnesses,
     onSaveWitness,
-    onCancelWitness
+    onCancelWitness,
+    toast
 }) {
     const [pendingRename, setPendingRename] = useState({});
     const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record', witnessId, recordId }
@@ -34,6 +35,70 @@ export default function WitnessManagement({
     const handleSaveSingle = onSaveWitness || (() => {});
     const handleCancelSingle = onCancelWitness || (() => {});
 
+    const notifyError = (message) => {
+        if (toast?.error) toast.error(message);
+        else console.error(message);
+    };
+
+    const formatMB = (bytes) => {
+        if (bytes == null) return '';
+        return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+    };
+
+    const formatDate = (iso) => {
+        if (!iso) return '';
+        try {
+            return new Date(iso).toISOString().slice(0, 10);
+        } catch {
+            return '';
+        }
+    };
+
+    const formatDuration = (seconds) => {
+        if (!Number.isFinite(seconds) || seconds <= 0) return '';
+        const total = Math.floor(seconds);
+        const h = Math.floor(total / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${pad(h)}:${pad(m)}:${pad(s)}`;
+    };
+
+    const validateTemplate = (witnessId, witnessName) => {
+        const t = witnessTemplates[witnessId] || {};
+        const checks = [
+            { key: 'readOnText', label: 'Read on text', value: t.readOnText },
+            { key: 'readOnTime', label: 'Read on time', value: t.readOnTime },
+            { key: 'readOffText', label: 'Read off text', value: t.readOffText },
+            { key: 'readOffTime', label: 'Read off time', value: t.readOffTime },
+        ];
+        for (const c of checks) {
+            const v = (c.value ?? '').toString().trim();
+            if (!v) {
+                notifyError(`${witnessName}: ${c.label} is required`);
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const validateRecords = (witnessId, witnessName) => {
+        const records = witnessRecords[witnessId] || [];
+        for (let idx = 0; idx < records.length; idx++) {
+            const r = records[idx] || {};
+            const partLabel = `${witnessName} - Part ${idx + 1}`;
+            if (!(r.startTime ?? '').toString().trim()) {
+                notifyError(`${partLabel}: Start Time is required`);
+                return false;
+            }
+            if (!(r.endTime ?? '').toString().trim()) {
+                notifyError(`${partLabel}: End Time is required`);
+                return false;
+            }
+        }
+        return true;
+    };
+
     const collapseTemplate = (id) => {
         setTemplateOpen((prev) => ({ ...prev, [id]: false }));
         setExpandedWitness((prev) => (prev === id ? null : prev));
@@ -41,10 +106,10 @@ export default function WitnessManagement({
 
     const toggleModal = (payload) => setConfirmModal(payload);
 
-    const confirmDelete = () => {
+    const confirmDelete = async () => {
         if (!confirmModal) return;
         if (confirmModal.type === 'witness') {
-            handleDeleteWitness(confirmModal.witnessId);
+            await handleDeleteWitness(confirmModal.witnessId);
         } else if (confirmModal.type === 'record') {
             handleDeleteRecord(confirmModal.witnessId, confirmModal.recordId);
         }
@@ -94,12 +159,46 @@ export default function WitnessManagement({
     return (
         <div className="space-y-4 relative">
             {renderConfirmModal()}
+            {addingWitness ? (
+                <div className="border border-blue-500 rounded-lg px-3 py-2 bg-white flex flex-col sm:flex-row sm:items-center gap-3">
+                    <input
+                        type="text"
+                        value={newWitnessName}
+                        onChange={(e) => setNewWitnessName(e.target.value)}
+                        placeholder="Witness name"
+                        className="flex-1 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                        autoFocus
+                    />
+                    <div className="flex justify-end gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setAddingWitness(false);
+                                setNewWitnessName('');
+                            }}
+                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleAddWitness}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                        >
+                            Save
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <AddActionButton label="Add Witness" onClick={() => setAddingWitness(true)} />
+            )}
+
             {witnesses.length > 0 && (
                 <div className="space-y-3">
                     {witnesses.map((witness) => (
                         <div key={witness.id} className="border border-gray-300 rounded-lg overflow-hidden bg-white">
                             <div
-                                className="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                className="px-4 py-3 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
                                 onClick={() => {
                                     const next = expandedWitness === witness.id ? null : witness.id;
                                     setExpandedWitness(next);
@@ -108,7 +207,7 @@ export default function WitnessManagement({
                                     }
                                 }}
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-2 min-w-0">
                                     {pendingRename[witness.id]?.editing ? (
                                         <div className="flex items-center gap-2">
                                             <input
@@ -133,47 +232,85 @@ export default function WitnessManagement({
                                             </button>
                                             <button
                                                 className="text-xs text-blue-600 font-semibold hover:text-blue-700"
-                                                onClick={(e) => {
+                                                onClick={async (e) => {
                                                     e.stopPropagation();
-                                                    handleRenameWitness(witness.id, pendingRename[witness.id]?.value || witness.name);
-                                                    setPendingRename((prev) => ({ ...prev, [witness.id]: { editing: false, value: witness.name } }));
+                                                    const ok = await handleRenameWitness(
+                                                        witness.id,
+                                                        pendingRename[witness.id]?.value ?? ''
+                                                    );
+                                                    if (!ok) return;
+                                                    setPendingRename((prev) => ({
+                                                        ...prev,
+                                                        [witness.id]: { editing: false, value: witness.name }
+                                                    }));
                                                 }}
                                             >
                                                 Save
                                             </button>
                                         </div>
                                     ) : (
-                                        <>
-                                            <span className="text-sm font-semibold text-gray-900">{witness.name}</span>
-                                            <span className="text-xs text-gray-500">
-                                                {`${(witnessRecords[witness.id] || []).filter(r => r.video).length}/${(witnessRecords[witness.id] || []).length || 0} Recordings Uploaded`}
-                                            </span>
-                                        </>
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-sm font-semibold text-gray-900 truncate">{witness.name}</span>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setPendingRename((prev) => ({
+                                                        ...prev,
+                                                        [witness.id]: { editing: true, value: witness.name }
+                                                    }));
+                                                }}
+                                                className="p-1 hover:bg-gray-100 rounded"
+                                                aria-label="Edit witness name"
+                                            >
+                                                <Edit3 className="w-4 h-4 text-gray-500" />
+                                            </button>
+                                            {(() => {
+                                                const uploadedCount = (witnessRecords[witness.id] || []).filter(r => r.video).length;
+                                                const label =
+                                                    uploadedCount === 0
+                                                        ? '0 Recordings Uploaded'
+                                                        : `${uploadedCount}/5 Recordings Uploaded`;
+                                                const isFull = uploadedCount >= 5;
+                                                return (
+                                                    <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-gray-100 border border-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 whitespace-nowrap">
+                                                        {isFull && <span className="w-2 h-2 rounded-full bg-green-500" />}
+                                                        {label}
+                                                    </span>
+                                                );
+                                            })()}
+                                        </div>
                                     )}
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    {(() => {
+                                        const uploadedCount = (witnessRecords[witness.id] || []).filter(r => r.video).length;
+                                        if (uploadedCount < 5) return null;
+                                        return (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    toast?.info?.('Download complete video is not available yet.');
+                                                }}
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                            >
+                                                <Download className="w-4 h-4 text-gray-500" />
+                                                Download complete video
+                                            </button>
+                                        );
+                                    })()}
                                     <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setPendingRename((prev) => ({
-                                                ...prev,
-                                                [witness.id]: { editing: true, value: witness.name }
-                                            }));
-                                        }}
-                                        className="p-1 hover:bg-gray-100 rounded"
-                                    >
-                                        <Edit3 className="w-4 h-4 text-gray-500" />
-                                    </button>
-                                    <button
+                                        type="button"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             toggleModal({ type: 'witness', witnessId: witness.id });
                                         }}
-                                        className="p-1 hover:bg-red-50 rounded transition-colors"
+                                        className="p-1.5 rounded-md border border-red-100 bg-red-50 hover:bg-red-100 transition-colors"
+                                        aria-label="Delete witness"
                                     >
                                         <Trash2 className="w-4 h-4 text-red-600" />
                                     </button>
-                                    <button className="text-blue-600 hover:text-blue-700 text-xs font-medium">Download complete video</button>
                                     {expandedWitness === witness.id ? (
                                         <ChevronUp className="w-4 h-4 text-gray-400" />
                                     ) : (
@@ -187,7 +324,7 @@ export default function WitnessManagement({
                                     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                                         <button
                                             type="button"
-                                            className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                                            className="w-full grid grid-cols-[1fr_auto_1fr] items-center px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50"
                                             onClick={() =>
                                                 setTemplateOpen((prev) => ({
                                                     ...prev,
@@ -195,12 +332,15 @@ export default function WitnessManagement({
                                                 }))
                                             }
                                         >
-                                            <span>Read on/off Template</span>
-                                            {(templateOpen[witness.id] ?? true) ? (
-                                                <ChevronUp className="w-4 h-4 text-gray-500" />
-                                            ) : (
-                                                <ChevronDown className="w-4 h-4 text-gray-500" />
-                                            )}
+                                            <span aria-hidden="true" />
+                                            <span className="justify-self-center">Read on/off Template</span>
+                                            <span className="justify-self-end">
+                                                {(templateOpen[witness.id] ?? true) ? (
+                                                    <ChevronUp className="w-4 h-4 text-gray-500" />
+                                                ) : (
+                                                    <ChevronDown className="w-4 h-4 text-gray-500" />
+                                                )}
+                                            </span>
                                         </button>
                                         {(templateOpen[witness.id] ?? true) && (
                                             <div className="p-4 space-y-4 border-t border-gray-200">
@@ -251,9 +391,17 @@ export default function WitnessManagement({
                                     {witnessRecords[witness.id]?.map((record, idx) => (
                                         <div key={record.id} className="bg-white p-4 rounded-lg border border-gray-200">
                                             <div className="flex items-center justify-between mb-4">
-                                                <h5 className="text-sm font-semibold text-gray-900">
-                                                    {witness.name} - Part {idx + 1}
-                                                </h5>
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <h5 className="text-sm font-semibold text-gray-900 truncate">
+                                                        {witness.name} - Part {idx + 1}
+                                                    </h5>
+                                                    {!!record?.video?.durationSeconds && (
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 whitespace-nowrap">
+                                                            <Clock className="w-3 h-3 text-gray-500" />
+                                                            {formatDuration(record.video.durationSeconds)}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <button
                                                     type="button"
                                                     onClick={() => toggleModal({ type: 'record', witnessId: witness.id, recordId: record.id })}
@@ -284,49 +432,65 @@ export default function WitnessManagement({
                                                 </div>
                                             </div>
 
-                                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 mb-4 flex flex-wrap items-center justify-between gap-4">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-12 h-12 rounded-full border border-gray-200 flex items-center justify-center text-gray-400">
-                                                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                                        </svg>
+                                            {record.video ? (
+                                                <div className="flex items-center justify-between gap-4 border border-gray-200 rounded-lg px-4 py-3 mb-4">
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div className="w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 shrink-0">
+                                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                            </svg>
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-medium text-gray-900 truncate">{record.video.name}</p>
+                                                            <p className="text-xs text-gray-500">
+                                                                {formatMB(record.video.size)} {record.video.uploadedAt ? `• ${formatDate(record.video.uploadedAt)}` : ''}
+                                                            </p>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <p className="text-sm font-medium text-gray-700">Upload Video</p>
-                                                        <p className="text-xs text-gray-500">MPEG or MP4 formats.</p>
-                                                        {record.video && (
-                                                            <p className="text-xs text-gray-600 mt-1">{record.video.name}</p>
-                                                        )}
-                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        className="p-2 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+                                                        onClick={() => handleUploadVideo(witness.id, record.id, null)}
+                                                        aria-label="Remove uploaded video"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
                                                 </div>
-                                                <label className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
-                                                    Upload
-                                                    <input
-                                                        type="file"
-                                                        accept="video/mpeg,video/mp4"
-                                                        className="hidden"
-                                                        onChange={(e) => handleUploadVideo(witness.id, record.id, e.target.files?.[0])}
-                                                    />
-                                                </label>
-                                            </div>
-
-                                            {record.video && (
-                                                <div className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg mb-4">
-                                                    <svg className="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm10 12H4v-2h10v2z" />
-                                                    </svg>
-                                                    <span className="text-sm text-gray-700">{record.video.name} ({(record.video.size / (1024 * 1024)).toFixed(1)} MB)</span>
-                                                    <span className="text-xs text-green-600 ml-auto">Ready</span>
+                                            ) : (
+                                                <div className="border border-gray-200 rounded-lg px-4 py-3 mb-4 flex flex-wrap items-center justify-between gap-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500">
+                                                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                                            </svg>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-gray-700">Upload Video</p>
+                                                            <p className="text-xs text-gray-500">MPEG or MP4 formats.</p>
+                                                        </div>
+                                                    </div>
+                                                    <label className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
+                                                        Upload
+                                                        <input
+                                                            type="file"
+                                                            accept="video/mpeg,video/mp4,.mp4,.mpeg,.mpg"
+                                                            className="hidden"
+                                                            onChange={(e) => handleUploadVideo(witness.id, record.id, e.target.files?.[0])}
+                                                        />
+                                                    </label>
                                                 </div>
                                             )}
                                         </div>
                                     ))}
 
-                                    <AddActionButton
-                                        label="Add Video"
-                                        onClick={() => handleAddRecord(witness.id)}
-                                        disabled={(witnessRecords[witness.id] || []).length >= 5}
-                                    />
+                                    <div className="flex justify-center">
+                                        <AddActionButton
+                                            label="Add Video"
+                                            onClick={() => handleAddRecord(witness.id)}
+                                            disabled={(witnessRecords[witness.id] || []).length >= 5}
+                                            onDisabledClick={() => notifyError(`${witness.name}: You can add maximum 5 videos (no more than 5).`)}
+                                        />
+                                    </div>
 
                                     <div className="flex justify-end gap-3 pt-2">
                                         <button
@@ -342,6 +506,11 @@ export default function WitnessManagement({
                                         <button
                                             type="button"
                                             onClick={() => {
+                                                const okTemplate = validateTemplate(witness.id, witness.name);
+                                                if (!okTemplate) return;
+                                                const okRecords = validateRecords(witness.id, witness.name);
+                                                if (!okRecords) return;
+
                                                 collapseTemplate(witness.id);
                                                 handleSaveSingle(witness.id, {
                                                     template: witnessTemplates[witness.id],
@@ -358,40 +527,6 @@ export default function WitnessManagement({
                         </div>
                     ))}
                 </div>
-            )}
-
-            {addingWitness ? (
-                <div className="border border-blue-400 rounded-lg p-4 bg-blue-50">
-                    <input
-                        type="text"
-                        value={newWitnessName}
-                        onChange={(e) => setNewWitnessName(e.target.value)}
-                        placeholder="Enter witness name"
-                        className="w-full px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
-                        autoFocus
-                    />
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setAddingWitness(false);
-                                setNewWitnessName('');
-                            }}
-                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleAddWitness}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-                        >
-                            Save
-                        </button>
-                    </div>
-                </div>
-            ) : (
-                <AddActionButton label="Add Witness" onClick={() => setAddingWitness(true)} />
             )}
 
         </div>
