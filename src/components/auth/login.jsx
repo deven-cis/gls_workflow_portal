@@ -3,18 +3,21 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { authAPI } from '@/services/api';
+import { setUser } from '@/lib/auth';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [emailError, setEmailError] = useState('');
+    const [authError, setAuthError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
 
     const handleLogin = async (e) => {
         e.preventDefault();
         setEmailError('');
+        setAuthError('');
         setIsLoading(true);
 
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -38,6 +41,11 @@ export default function LoginPage() {
                 if (response.refresh_token) {
                     localStorage.setItem('refresh_token', response.refresh_token);
                 }
+
+                // Store user details for Settings/Header usage
+                if (response.user) {
+                    setUser(response.user);
+                }
                 
                 // Redirect to dashboard on successful login
                 console.log('Redirecting to dashboard...');
@@ -48,7 +56,7 @@ export default function LoginPage() {
             }
         } catch (err) {
             console.log('Login error:', err);
-            setEmailError('Invalid email or password');
+            setAuthError(err?.message || 'Invalid email or password');
         } finally {
             setIsLoading(false);
         }
@@ -148,6 +156,7 @@ export default function LoginPage() {
                                     onChange={(e) => {
                                         setEmail(e.target.value);
                                         setEmailError('');
+                                        setAuthError('');
                                     }}
                                     className={`block w-full pl-12 pr-4 py-3 border ${emailError ? 'border-red-500' : 'border-gray-300'
                                         } rounded-lg focus:ring-2 focus:ring-[#8B1538] focus:border-[#8B1538] outline-none transition-all bg-white text-gray-900 placeholder:text-gray-400`}
@@ -178,8 +187,11 @@ export default function LoginPage() {
                                     id="password"
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="block w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#8B1538] focus:border-[#8B1538] outline-none transition-all bg-white text-gray-900 placeholder:text-gray-400"
+                                    onChange={(e) => {
+                                        setPassword(e.target.value);
+                                        setAuthError('');
+                                    }}
+                                    className={`block w-full pl-12 pr-12 py-3 border ${authError ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:ring-2 focus:ring-[#8B1538] focus:border-[#8B1538] outline-none transition-all bg-white text-gray-900 placeholder:text-gray-400`}
                                     placeholder="••••••••"
                                 />
                                 <button
@@ -199,6 +211,13 @@ export default function LoginPage() {
                                     )}
                                 </button>
                             </div>
+                            {authError && (
+                                <div className="mt-2">
+                                    <span className="inline-block bg-red-500 text-white text-xs px-3 py-1 rounded">
+                                        {authError}
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
                         {/* Login Button */}

@@ -33,7 +33,7 @@ function processQueue(error, token = null) {
  */
 async function refreshAccessToken() {
     const refreshToken = getRefreshToken();
-    
+   
     if (!refreshToken) {
         throw new Error('No refresh token available');
     }
@@ -66,16 +66,18 @@ async function refreshAccessToken() {
             throw new Error(`Refresh failed: ${response.status} ${response.statusText}`);
         }
 
-        if (data.access_token) {
+        const tokenPayload = (data && typeof data === 'object' && 'result' in data) ? (data.result ?? data) : data;
+
+        if (tokenPayload?.access_token) {
             console.log('Token refreshed successfully');
             // Store tokens in localStorage
             if (typeof window !== 'undefined') {
-                localStorage.setItem('access_token', data.access_token);
-                if (data.refresh_token) {
-                    localStorage.setItem('refresh_token', data.refresh_token);
+                localStorage.setItem('access_token', tokenPayload.access_token);
+                if (tokenPayload.refresh_token) {
+                    localStorage.setItem('refresh_token', tokenPayload.refresh_token);
                 }
             }
-            return data;
+            return tokenPayload;
         } else {
             throw new Error('No access token in refresh response');
         }
@@ -118,6 +120,8 @@ export const galloInstance = async (endpoint, options = {}) => {
     // Get the access token from localStorage
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
     console.log('Token:', token);
+    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refresh_token') : null;
+
     
     // Check if body is FormData - if so, don't set Content-Type (browser will set it with boundary)
     // Be robust: instanceof can fail across realms/polyfills

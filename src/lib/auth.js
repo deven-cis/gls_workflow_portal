@@ -1,6 +1,7 @@
 // Enhanced auth helpers with refresh token support
 export const AUTH_TOKEN_KEY = 'access_token';
 export const REFRESH_TOKEN_KEY = 'refresh_token';
+export const USER_KEY = 'user';
 
 export function getToken() {
     if (typeof window === 'undefined') return null;
@@ -30,6 +31,27 @@ export function setToken(token) {
     }
 }
 
+export function getUser() {
+    if (typeof window === 'undefined') return null;
+    try {
+        const raw = window.localStorage.getItem(USER_KEY);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch (e) {
+        console.warn('Failed to parse stored user', e);
+        return null;
+    }
+}
+
+export function setUser(user) {
+    if (typeof window === 'undefined') return;
+    if (user) {
+        window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } else {
+        window.localStorage.removeItem(USER_KEY);
+    }
+}
+
 export function isAuthenticated() {
     return !!getToken();
 }
@@ -38,6 +60,7 @@ export function logout() {
     if (typeof window === 'undefined') return;
     window.localStorage.removeItem(AUTH_TOKEN_KEY);
     window.localStorage.removeItem(REFRESH_TOKEN_KEY);
+    window.localStorage.removeItem(USER_KEY);
 }
 
 // JWT token decoding utility

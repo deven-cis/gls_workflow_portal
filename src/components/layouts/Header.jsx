@@ -4,6 +4,8 @@ import { useMemo, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeft, Clock } from 'lucide-react';
 import AvatarMenu from '@/components/layouts/AvatarMenu';
+import { getUser } from '@/lib/auth';
+import { userSettingsAPI } from '@/services/user_setting';
 
 export default function Header() {
     const pathname = usePathname();
@@ -33,6 +35,27 @@ export default function Header() {
     // Only render time on client to avoid hydration mismatch
     const [dateStr, setDateStr] = useState('');
     const [timeStr, setTimeStr] = useState('');
+    const [userName, setUserName] = useState('User');
+    const [avatarSrc, setAvatarSrc] = useState(null);
+
+    const API_BASE_URL = 'http://127.0.0.1:8000';
+    const resolveUrl = (pathOrUrl) => {
+        if (!pathOrUrl) return null;
+        const s = String(pathOrUrl);
+        if (s.startsWith('http://') || s.startsWith('https://')) return s;
+        if (s.startsWith('/')) return `${API_BASE_URL}${s}`;
+        return `${API_BASE_URL}/${s}`;
+    };
+
+    const safeTail = (s) => {
+        if (!s) return null;
+        try {
+            const parts = String(s).split('/');
+            return parts[parts.length - 1]?.slice(0, 40) || null;
+        } catch {
+            return null;
+        }
+    };
 
     useEffect(() => {
         const update = () => {
@@ -44,6 +67,38 @@ export default function Header() {
         // Optionally update time every minute
         const interval = setInterval(update, 60000);
         return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        const u = getUser();
+        const name = u?.full_name || u?.fullName || u?.login_name || u?.email || 'User';
+        setUserName(name);
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadAvatar = async (source) => {
+            try {
+                const profile = await userSettingsAPI.getCurrentUser();
+                const raw = profile?.profile_image_url || null;
+                const url = resolveUrl(raw);
+                // bust cache after change/remove
+                const withCacheBust = url ? `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}` : null;
+                if (cancelled) return;
+                setAvatarSrc(withCacheBust);
+            } catch (e) {
+                if (cancelled) return;
+                setAvatarSrc(null);
+            }
+        };
+
+        loadAvatar('mount');
+        const handler = () => loadAvatar('event');
+        window.addEventListener('gls:profile-picture-updated', handler);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('gls:profile-picture-updated', handler);
+        };
     }, []);
 
     return (
@@ -61,7 +116,8 @@ export default function Header() {
                 <div className="flex items-center gap-3">
                     <span className="text-sm text-gray-600">{dateStr}</span>
                     <span className="text-sm font-medium text-gray-900">{timeStr}</span>
-                    <AvatarMenu name="Jakir Hossen" />
+                    {/* If no profile photo, show placeholder icon (not initials) */}
+                    <AvatarMenu name={userName} avatarSrc={avatarSrc} fallback="icon" />
                 </div>
             </div>
         </header>

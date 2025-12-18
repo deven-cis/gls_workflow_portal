@@ -23,8 +23,13 @@ export default function LayoutWrapper({ children }) {
     // Redirect unauthenticated users away from protected routes
     useEffect(() => {
         if (!isMounted) return;
-        const publicRoutes = ['/', '/auth', '/auth/login'];
-        const isPublic = publicRoutes.some((r) => pathname === r || pathname?.startsWith(r));
+        // Public routes (no auth required)
+        // NOTE: do NOT use startsWith('/') because it would match every route.
+        const isPublic =
+            pathname === '/' ||
+            pathname === '/auth' ||
+            pathname === '/auth/login' ||
+            pathname?.startsWith('/auth/');
         try {
             // Lazy import to avoid circular imports at module evaluation time
             const { isAuthenticated } = require('@/lib/auth');
@@ -38,12 +43,12 @@ export default function LayoutWrapper({ children }) {
     }, [isMounted, pathname, router]);
 
     // Hide sidebar on login and auth pages
-    const hideSidebar = pathname === '/' || pathname.startsWith('/auth');
+    const hideChrome = pathname === '/' || pathname.startsWith('/auth');
 
     return (
         <ToastProvider>
             <div className="flex h-screen overflow-hidden bg-white">
-                {isMounted && !hideSidebar && (
+                {isMounted && !hideChrome && (
                     <Sidebar
                         isSidebarCollapsed={isSidebarCollapsed}
                         setIsSidebarCollapsed={setIsSidebarCollapsed}
@@ -51,13 +56,13 @@ export default function LayoutWrapper({ children }) {
                 )}
 
                 <main className={`flex-1 overflow-auto transition-all duration-300 ${
-                    !hideSidebar && !isSidebarCollapsed 
+                    !hideChrome && !isSidebarCollapsed 
                         ? 'md:ml-64'
-                        : !hideSidebar && isSidebarCollapsed
+                        : !hideChrome && isSidebarCollapsed
                         ? 'md:ml-20'
                         : ''
                 }`}>
-                    <Header />
+                    {!hideChrome && <Header />}
                     {children}
                 </main>
             </div>

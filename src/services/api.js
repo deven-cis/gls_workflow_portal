@@ -129,13 +129,20 @@ export const taskAPI = {
  */
 export const authAPI = {
   login: async (login_name, login_password) => {
-    return galloInstance('/api/login', {
+    const response = await galloInstance('/api/login', {
       method: 'POST',
       body: JSON.stringify({ login_name, login_password }),
       headers: {
         'Content-Type': 'application/json',
       },
     });
+
+    // Backend returns: { status_code, success, result: { access_token, refresh_token, ... } }
+    if (response && response.success === false) {
+      const message = response?.result?.message || response?.message || 'Login failed';
+      throw new Error(message);
+    }
+    return response?.result ?? response;
   },
 
   logout: () => {
@@ -153,13 +160,20 @@ export const authAPI = {
 
 
   refreshToken: async (refreshToken) => {
-    return galloInstance('/api/refresh-token', {
+    const response = await galloInstance('/api/refresh-token', {
       method: 'POST',
       body: JSON.stringify({ refresh_token: refreshToken }),
       headers: {
         'Content-Type': 'application/json',
       },
     });
+
+    // Backend may return either { access_token, refresh_token? } OR { success, result: { access_token, ... } }
+    if (response && response.success === false) {
+      const message = response?.result?.message || response?.message || 'Token refresh failed';
+      throw new Error(message);
+    }
+    return response?.result ?? response;
   },
 };
 
