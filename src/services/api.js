@@ -1,4 +1,5 @@
 import { galloInstance } from './galloInstance.js';
+import { formatTime12Hour } from '@/lib/utils';
 
 const GALLo_URL = 'http://127.0.0.1:8000'; 
 let API_BASE_URL = GALLo_URL;
@@ -6,13 +7,14 @@ let API_BASE_URL = GALLo_URL;
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
   const dateStr = jobDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const timeStr = job.start_time ? job.start_time.substring(0, 5) : '00:00';
+  const time24 = job.start_time ? job.start_time.substring(0, 5) : '00:00';
+  const timeStr = formatTime12Hour(time24);
   
   return {
     id: job.job_no,
     jobId: `Job${job.job_no}`,
     date: dateStr,
-    time: `${timeStr}`,
+    time: timeStr,
     title: job.case?.case_short_name || `Job #${job.job_no}`,
     location: job.zoom_meeting_id ? 'Virtual - Zoom' : `${job.job_loc_name || ''}, ${job.job_loc_city || ''}`,
     status: job.computed_status || job.status,

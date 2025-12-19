@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { LockKeyhole } from "lucide-react";
-import { getUser } from "@/lib/auth";
+import { useRouter } from "next/navigation";
+import { LockKeyhole, Eye, EyeOff } from "lucide-react";
+import { getUser, logout } from "@/lib/auth";
 import { useToast } from "@/contexts/ToastContext";
 import { userSettingsAPI } from "@/services/user_setting";
 
 export default function SettingPage() {
+  const router = useRouter();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [profileImageSrc, setProfileImageSrc] = useState(null); // URL from backend (or null)
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -21,6 +23,15 @@ export default function SettingPage() {
     newPassword: "",
     confirmPassword: "",
   });
+  const [showPasswords, setShowPasswords] = useState({
+    oldPassword: false,
+    newPassword: false,
+    confirmPassword: false,
+  });
+  const [passwordError, setPasswordError] = useState("");
+  const [oldPasswordError, setOldPasswordError] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [userId, setUserId] = useState(null);
 
   const API_BASE_URL = "http://127.0.0.1:8000";
   const resolveUrl = (pathOrUrl) => {
@@ -106,17 +117,94 @@ export default function SettingPage() {
   };
 
   const handlePasswordChange = (e) => {
-    setPasswordData({
+    const newData = {
       ...passwordData,
       [e.target.name]: e.target.value,
-    });
+    };
+    setPasswordData(newData);
+    
+    // Clear old password error when user types
+    if (e.target.name === "oldPassword") {
+      setOldPasswordError("");
+    }
+    
+    // Validate passwords match
+    if (newData.newPassword && newData.confirmPassword) {
+      if (newData.newPassword !== newData.confirmPassword) {
+        setPasswordError("New password and confirm password must match");
+      } else {
+        setPasswordError("");
+      }
+    } else {
+      setPasswordError("");
+    }
   };
 
-  const handleUpdatePassword = () => {
-    // Add password update logic here
-    console.log("Updating password...", passwordData);
-    setShowPasswordModal(false);
-    setPasswordData({ oldPassword: "", newPassword: "", confirmPassword: "" });
+  const togglePasswordVisibility = (field) => {
+    setShowPasswords((prev) => ({
+      ...prev,
+      [field]: !prev[field],
+    }));
+  };
+
+  const isPasswordFormValid = () => {
+    return (
+      passwordData.oldPassword.trim() !== "" &&
+      passwordData.newPassword.trim() !== "" &&
+      passwordData.confirmPassword.trim() !== "" &&
+      passwordData.newPassword === passwordData.confirmPassword &&
+      passwordError === ""
+    );
+  };
+
+  const handleUpdatePassword = async () => {
+    if (!isPasswordFormValid()) {
+      return;
+    }
+
+    if (!userId) {
+      toast.error("User ID not found. Please refresh the page.");
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setOldPasswordError("");
+    setPasswordError("");
+
+    try {
+      await userSettingsAPI.changePassword(
+        userId,
+        passwordData.oldPassword,
+        passwordData.newPassword
+      );
+      
+      toast.success("Password changed successfully. Please login again with your new password.");
+      
+      // Close modal and reset form
+      setShowPasswordModal(false);
+      setPasswordData({ oldPassword: "", newPassword: "", confirmPassword: "" });
+      setShowPasswords({ oldPassword: false, newPassword: false, confirmPassword: false });
+      setPasswordError("");
+      setOldPasswordError("");
+      
+      // Logout user and redirect to login page
+      setTimeout(() => {
+        logout();
+        router.push("/auth/login");
+      }, 1000); // Small delay to show success message
+    } catch (error) {
+      const errorMessage = error?.message || "Failed to change password";
+      
+      // Check if it's an old password error
+      if (errorMessage.toLowerCase().includes("old password") || 
+          errorMessage.toLowerCase().includes("incorrect")) {
+        setOldPasswordError(errorMessage);
+      } else {
+        toast.error(errorMessage);
+      }
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   useEffect(() => {
@@ -132,6 +220,8 @@ export default function SettingPage() {
           email: profile?.email || profile?.login_name || prev.email,
         }));
         setProfileImageSrc(computedUrl);
+        // Get user_id from profile (could be user_id, id, or user_id)
+        setUserId(profile?.user_id || profile?.id || profile?.user_id);
       } catch (e) {
         // Fallback: use local user cache for name/email only
         const u = getUser();
@@ -141,6 +231,8 @@ export default function SettingPage() {
             fullName: u.full_name || u.fullName || u.login_name || prev.fullName,
             email: u.email || u.login_name || prev.email,
           }));
+          // Get user_id from local user cache
+          setUserId(u?.user_id || u?.id || u?.user_id);
         }
         console.warn("Failed to load user profile from backend", e);
       }
@@ -327,20 +419,31 @@ export default function SettingPage() {
                 </label>
                 <div className="relative">
                   <input
-                    type="password"
+                    type={showPasswords.oldPassword ? "text" : "password"}
                     name="oldPassword"
                     value={passwordData.oldPassword}
                     onChange={handlePasswordChange}
-                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className={`w-full pl-10 pr-10 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 ${
+                      oldPasswordError ? "border-red-500" : "border-gray-300"
+                    }`}
+                    autoComplete="current-password"
                   />
                   <LockKeyhole size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
+                  <button
+                    type="button"
+                    onClick={() => togglePasswordVisibility("oldPassword")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPasswords.oldPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
                   </button>
                 </div>
+                {oldPasswordError && (
+                  <p className="mt-1 text-sm text-red-600">{oldPasswordError}</p>
+                )}
               </div>
 
               <div>
@@ -349,18 +452,26 @@ export default function SettingPage() {
                 </label>
                 <div className="relative">
                   <input
-                    type="password"
+                    type={showPasswords.newPassword ? "text" : "password"}
                     name="newPassword"
                     value={passwordData.newPassword}
                     onChange={handlePasswordChange}
-                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className={`w-full pl-10 pr-10 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 ${
+                      passwordError ? "border-red-500" : "border-gray-300"
+                    }`}
+                    autoComplete="new-password"
                   />
                   <LockKeyhole size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
+                  <button
+                    type="button"
+                    onClick={() => togglePasswordVisibility("newPassword")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPasswords.newPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -371,35 +482,66 @@ export default function SettingPage() {
                 </label>
                 <div className="relative">
                   <input
-                    type="password"
+                    type={showPasswords.confirmPassword ? "text" : "password"}
                     name="confirmPassword"
                     value={passwordData.confirmPassword}
                     onChange={handlePasswordChange}
-                    className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className={`w-full pl-10 pr-10 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 ${
+                      passwordError ? "border-red-500" : "border-gray-300"
+                    }`}
+                    autoComplete="confirm-password"
                   />
                   <LockKeyhole size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
+                  <button
+                    type="button"
+                    onClick={() => togglePasswordVisibility("confirmPassword")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPasswords.confirmPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
                   </button>
                 </div>
+                {passwordError && (
+                  <p className="mt-1 text-sm text-red-600">{passwordError}</p>
+                )}
               </div>
             </div>
 
             <div className="flex justify-end gap-3">
               <button
-                onClick={() => setShowPasswordModal(false)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setPasswordData({ oldPassword: "", newPassword: "", confirmPassword: "" });
+                  setShowPasswords({ oldPassword: false, newPassword: false, confirmPassword: false });
+                  setPasswordError("");
+                  setOldPasswordError("");
+                }}
+                disabled={isChangingPassword}
+                className={`px-4 py-2 text-sm font-medium border border-gray-300 rounded-md transition-colors ${
+                  isChangingPassword
+                    ? "text-gray-400 bg-gray-100 cursor-not-allowed"
+                    : "text-gray-700 hover:bg-gray-50"
+                }`}
               >
                 Cancel
               </button>
               <button
                 onClick={handleUpdatePassword}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                disabled={!isPasswordFormValid() || isChangingPassword}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                  isPasswordFormValid() && !isChangingPassword
+                    ? "text-white bg-red-600 hover:bg-red-700"
+                    : "text-gray-400 bg-gray-300 cursor-not-allowed"
+                }`}
               >
-                Change Password
+                {isChangingPassword
+                  ? "Changing..."
+                  : isPasswordFormValid()
+                  ? "Change Password"
+                  : "Update Password"}
               </button>
             </div>
           </div>

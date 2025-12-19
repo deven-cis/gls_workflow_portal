@@ -3,7 +3,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useParams, useRouter , useSearchParams} from 'next/navigation';
 import { MapPin, Clock, MoreVertical, ChevronDown, ChevronUp, Trash2, Clock as ClockIcon, Check, Search } from 'lucide-react';
 import AvatarMenu from '@/components/layouts/AvatarMenu';
-import { createAttorneySection, getInitials } from '@/lib/utils';
+import { createAttorneySection, getInitials, formatTime12Hour } from '@/lib/utils';
 import TimeInput from '@/components/task_details/task/TimeInput';
 import AddActionButton from '@/components/task_details/task/AddActionButton';
 import ToggleOption from '@/components/task_details/task/ToggleOption';
@@ -47,6 +47,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const searchParams = useSearchParams();
     const selectedJobId = searchParams.get('jobId');
     const toast = useToast();
+    const [jobData, setJobData] = useState(null);
+    const [task, setTask] = useState(null);
     console.log("taskDetails witnessesData:", witnessesData);
     // seed witnesses from page data
     useEffect(() => {
@@ -1094,13 +1096,79 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         }
     };
 
-    // Mock task data
-    const task = {
-        id: params.id,
-        title: 'Federal Deposition – Daniels v. IRS',
-        location: '123 Legal Ave, Room 302',
-        time: '10:00 AM'
-    };
+    // Fetch job data to populate task info
+    useEffect(() => {
+        const fetchJobData = async () => {
+            if (!selectedJobId) {
+                // If no jobId, try to construct from caseInfo
+                if (caseInfo) {
+                    const constructedTask = {
+                        id: caseId,
+                        title: caseInfo.case_short_name || caseInfo.case_name || 'Case Details',
+                        location: caseInfo.location || 'Location not specified',
+                        time: 'Time not specified',
+                        date: 'Date not specified',
+                        status: 'scheduled',
+                        platform: caseInfo.platform || null,
+                    };
+                    setTask(constructedTask);
+                }
+                return;
+            }
+
+            try {
+                // Try to get job from pending tasks first
+                const pendingTasks = await taskAPI.getPendingTasks();
+                const foundJob = pendingTasks.find(t => t.id === selectedJobId || t.jobId === `Job${selectedJobId}`);
+                
+                if (foundJob) {
+                    setTask(foundJob);
+                    return;
+                }
+
+                // If not found in pending, try upcoming tasks
+                const upcomingTasks = await taskAPI.getUpcomingTasks();
+                const foundUpcomingJob = upcomingTasks.find(t => t.id === selectedJobId || t.jobId === `Job${selectedJobId}`);
+                
+                if (foundUpcomingJob) {
+                    setTask(foundUpcomingJob);
+                    return;
+                }
+
+                // If still not found, construct from caseInfo
+                if (caseInfo) {
+                    const constructedTask = {
+                        id: selectedJobId,
+                        jobId: `Job${selectedJobId}`,
+                        title: caseInfo.case_short_name || caseInfo.case_name || 'Case Details',
+                        location: caseInfo.location || 'Location not specified',
+                        time: 'Time not specified',
+                        date: 'Date not specified',
+                        status: 'scheduled',
+                        platform: caseInfo.platform || null,
+                    };
+                    setTask(constructedTask);
+                }
+            } catch (error) {
+                console.error('Failed to fetch job data:', error);
+                // Fallback to caseInfo
+                if (caseInfo) {
+                    const constructedTask = {
+                        id: selectedJobId || caseId,
+                        title: caseInfo.case_short_name || caseInfo.case_name || 'Case Details',
+                        location: caseInfo.location || 'Location not specified',
+                        time: 'Time not specified',
+                        date: 'Date not specified',
+                        status: 'scheduled',
+                        platform: caseInfo.platform || null,
+                    };
+                    setTask(constructedTask);
+                }
+            }
+        };
+
+        fetchJobData();
+    }, [selectedJobId, caseInfo, caseId]);
 
     const steps = [
         { number: 1, title: 'Case Details', done: false },
@@ -1659,47 +1727,71 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
             <div className="flex h-[calc(100vh-73px)]">
                 {/* Left Panel - Task Info */}
                 <div className="w-full md:w-96 bg-white border-r border-gray-200 p-6 overflow-y-auto">
-                    {/* Status Badge */}
-                    <div className="flex items-center justify-between mb-4">
-                        <span className="px-3 py-1 bg-gray-100 text-gray-600 text-sm font-medium rounded-lg">
-                            Scheduled
-                        </span>
-                        <button className="p-1 hover:bg-gray-100 rounded">
-                            <MoreVertical className="w-5 h-5 text-gray-400" />
-                        </button>
-                    </div>
-
-                    {/* Task Title */}
-                    <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                        {task.title}
-                    </h2>
-
-                    {/* Location and Time */}
-                    <div className="space-y-3 mb-6">
-                        {task.location && (
-                            <div className="flex items-center gap-2 text-gray-600">
-                                <MapPin className="w-5 h-5" />
-                                <span className="text-sm">{task.location}</span>
+                    {task ? (
+                        <>
+                            {/* Status Badge */}
+                            <div className="flex items-center justify-between mb-4">
+                                <span className={`px-3 py-1 text-sm font-medium rounded-lg ${
+                                    task.status === 'videos-pending' 
+                                        ? 'bg-red-50 text-red-600' 
+                                        : task.status === 'session-started'
+                                        ? 'bg-orange-50 text-orange-600'
+                                        : task.status === 'session-not-started'
+                                        ? 'bg-gray-100 text-gray-600'
+                                        : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                    {task.status === 'videos-pending' 
+                                        ? 'Videos Pending' 
+                                        : task.status === 'session-started'
+                                        ? 'Session Started'
+                                        : task.status === 'session-not-started'
+                                        ? 'Session not Started'
+                                        : 'Scheduled'}
+                                </span>
+                                <button className="p-1 hover:bg-gray-100 rounded">
+                                    <MoreVertical className="w-5 h-5 text-gray-400" />
+                                </button>
                             </div>
-                        )}
-                        {task.platform && (
-                            <div className="flex items-center gap-2 text-blue-600">
-                                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                                    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 14.47l-5.894 3.4-5.894-3.4V9.53l5.894-3.4 5.894 3.4v4.94z" />
-                                </svg>
-                                <span className="text-sm">{task.platform}</span>
+
+                            {/* Task Title */}
+                            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                                {task.type ? `${task.type}: ` : ''}{task.title}
+                            </h2>
+
+                            {/* Location and Time */}
+                            <div className="space-y-3 mb-6">
+                                {task.location && (
+                                    <div className="flex items-center gap-2 text-gray-600">
+                                        <MapPin className="w-5 h-5" />
+                                        <span className="text-sm">{task.location}</span>
+                                    </div>
+                                )}
+                                {task.platform && (
+                                    <div className="flex items-center gap-2 text-blue-600">
+                                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 14.47l-5.894 3.4-5.894-3.4V9.53l5.894-3.4 5.894 3.4v4.94z" />
+                                        </svg>
+                                        <span className="text-sm">{task.platform}</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-2 text-gray-600">
+                                    <Clock className="w-5 h-5" />
+                                    <span className="text-sm">
+                                        {task.date ? `${task.date}, ` : ''}{task.time || 'Time not specified'}
+                                    </span>
+                                </div>
                             </div>
-                        )}
-                        <div className="flex items-center gap-2 text-gray-600">
-                            <Clock className="w-5 h-5" />
-                            <span className="text-sm">Today, {task.time}</span>
+
+                            {/* Start Session Button */}
+                            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors mb-6">
+                                Start Session
+                            </button>
+                        </>
+                    ) : (
+                        <div className="flex items-center justify-center py-12">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
                         </div>
-                    </div>
-
-                    {/* Start Session Button */}
-                    <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors mb-6">
-                        Start Session
-                    </button>
+                    )}
                 </div>
 
                 {/* Right Panel - Case Progress */}

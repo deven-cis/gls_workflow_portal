@@ -45,6 +45,22 @@ export const userSettingsAPI = {
     }
     return response?.result ?? response;
   },
+
+  changePassword: async (userId, oldPassword, newPassword) => {
+    const response = await galloInstance('/users/change-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: userId,
+        old_password: oldPassword,
+        new_password: newPassword,
+      }),
+    });
+    if (response && response.success === false) {
+      const message = response?.result?.message || response?.message || 'Failed to change password';
+      throw new Error(message);
+    }
+    return response?.result ?? response;
+  },
 };
 
 
