@@ -1623,7 +1623,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
             console.log('witness save files', files);
             const saved = await witnessesAPI.saveAllWitnessAndVideos({ payload, files });
             
-            toast.success('Witness + videos saved successfully');
+            toast.success('Witness and videos saved successfully');
             setDeletedWitnessVideoIds((prev) => {
                 const next = { ...prev };
                 delete next[witnessId];

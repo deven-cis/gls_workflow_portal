@@ -56,7 +56,17 @@ export default function LoginPage() {
             }
         } catch (err) {
             console.log('Login error:', err);
-            setAuthError(err?.message || 'Invalid email or password');
+            const errorMessage = err?.message || 'Invalid email or password';
+            
+            // Check if error is related to email/user not found
+            if (errorMessage.toLowerCase().includes('user') || 
+                errorMessage.toLowerCase().includes('email') || 
+                errorMessage.toLowerCase().includes('not found')) {
+                setEmailError(errorMessage);
+            } else {
+                // Password-related errors
+                setAuthError(errorMessage);
+            }
         } finally {
             setIsLoading(false);
         }

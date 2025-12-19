@@ -178,7 +178,7 @@ export default function SettingPage() {
         passwordData.newPassword
       );
       
-      toast.success("Password changed successfully. Please login again with your new password.");
+      toast.success("Password changed successfully.");
       
       // Close modal and reset form
       setShowPasswordModal(false);
@@ -187,11 +187,6 @@ export default function SettingPage() {
       setPasswordError("");
       setOldPasswordError("");
       
-      // Logout user and redirect to login page
-      setTimeout(() => {
-        logout();
-        router.push("/auth/login");
-      }, 1000); // Small delay to show success message
     } catch (error) {
       const errorMessage = error?.message || "Failed to change password";
       

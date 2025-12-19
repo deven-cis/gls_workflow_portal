@@ -8,6 +8,7 @@ import TaskSection from '@/components/list_of_tasks/TaskSection';
 import EmptyState from '@/components/empty_state/EmptyState';
 import { CalendarView } from '@/components/calendar_view/CalendarView';
 import { taskAPI } from '@/services/api';
+import { getUser } from '@/lib/auth';
 
 export default function MyTasks() {
     const [activeView, setActiveView] = useState('list');
@@ -16,6 +17,7 @@ export default function MyTasks() {
     const [upcomingTasks, setUpcomingTasks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [userName, setUserName] = useState('User');
     const searchParams = useSearchParams();
 
     // Load tasks from backend APIs
@@ -48,6 +50,12 @@ export default function MyTasks() {
         }
     }, [searchParams]);
 
+    useEffect(() => {
+        const u = getUser();
+        const name = u?.full_name || u?.fullName || u?.login_name || u?.email || 'User';
+        setUserName(name);
+    }, []);
+
     const handleTaskSelect = (taskId) => {
         setSelectedTaskId(taskId);
     };
@@ -66,7 +74,7 @@ export default function MyTasks() {
                         <div className="flex items-center gap-2 mb-2">
                             <span className="text-2xl md:text-3xl">👋</span>
                             <h2 className="text-xl md:text-2xl lg:text-3xl font-bold text-gray-900">
-                                Hi Jakir
+                                Hi {userName}
                             </h2>
                         </div>
                         <p className="text-gray-600 text-xs md:text-sm lg:text-base">
