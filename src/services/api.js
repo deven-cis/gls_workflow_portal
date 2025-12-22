@@ -17,7 +17,7 @@ const mapJobToTask = (job) => {
     time: timeStr,
     title: job.case?.case_short_name || `Job #${job.job_no}`,
     location: job.zoom_meeting_id ? 'Virtual - Zoom' : `${job.job_loc_name || ''}, ${job.job_loc_city || ''}`,
-    status: job.computed_status || job.status,
+    status: job.computed_status,
     caseNo: job.case_no,
     caseInfo: {
       id: job.case?.id,

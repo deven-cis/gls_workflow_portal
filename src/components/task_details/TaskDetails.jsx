@@ -1,7 +1,7 @@
 "use client";
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter , useSearchParams} from 'next/navigation';
-import { MapPin, Clock, MoreVertical, ChevronDown, ChevronUp, Trash2, Clock as ClockIcon, Check, Search } from 'lucide-react';
+import { MapPin, Clock, MoreVertical, ChevronDown, ChevronUp, Trash2, Clock as ClockIcon, Check, Search, Info } from 'lucide-react';
 import AvatarMenu from '@/components/layouts/AvatarMenu';
 import { createAttorneySection, getInitials, formatTime12Hour } from '@/lib/utils';
 import TimeInput from '@/components/task_details/task/TimeInput';
@@ -20,6 +20,7 @@ import { billingAPI } from '@/services/billings_apis';
 import { equipmentTimeAPI } from '@/services/equipment_time_apis';
 import { witnessesAPI } from '@/services/witnesses_apis';
 import { attorneysAPI } from '@/services/attorneys_apis';
+import { sessionAPI } from '@/services/session_button';
 import { useToast } from '@/contexts/ToastContext';
 
 export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
@@ -49,7 +50,11 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const toast = useToast();
     const [jobData, setJobData] = useState(null);
     const [task, setTask] = useState(null);
-    console.log("taskDetails witnessesData:", witnessesData);
+    const [sessionStarted, setSessionStarted] = useState(false);
+    const [sessionStartTime, setSessionStartTime] = useState(null);
+    const [sessionDuration, setSessionDuration] = useState('00:00:00');
+    const [showEndSessionModal, setShowEndSessionModal] = useState(false);
+    const lastFetchedJobRef = useRef(null);
     // seed witnesses from page data
     useEffect(() => {
         if (!Array.isArray(witnessesData)) return;
@@ -172,7 +177,6 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                     setAttorneySections([createAttorneySection('Taking Attorney')]);
                 }
             } catch (err) {
-                console.error('Failed to fetch attorneys:', err);
                 // On error, keep default "Taking Attorney"
                 setAttorneySections([createAttorneySection('Taking Attorney')]);
             }
@@ -252,7 +256,6 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
             setIsCaseEdited(false);
             toast.success('Case details updated successfully');
         } catch (err) {
-            console.error('Failed to update case', err);
             toast.error('Failed to update case details');
         }
     };
@@ -279,24 +282,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const [pendingBillingChanges, setPendingBillingChanges] = useState(null);
     const [billingHasBeenSaved, setBillingHasBeenSaved] = useState(false);
     const [billingId, setBillingId] = useState(null);
-    const [assigneeSearch, setAssigneeSearch] = useState('');
-    const [collaboratorSearch, setCollaboratorSearch] = useState('');
 
-    const assignee = {
-        name: 'Jakir Hossen',
-        role: 'Lead Videographer',
-        status: 'me'
-    };
-
-    const collaboratorsList = [
-        { id: 1, name: 'Arlene McCoy', role: 'Paralegal' },
-        { id: 2, name: 'Darlene Robertson', role: 'Coordinator' },
-        { id: 3, name: 'Jacob Jones', role: 'Assistant' }
-    ];
-
-    const activityTimeline = [
-        { label: 'Session start time', time: '10:03 am' }
-    ];
     const [equipmentInfo, setEquipmentInfo] = useState({
         laptopUsed: false,
         pipUsed: false,
@@ -1716,8 +1702,241 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         });
     };
 
+    // Format duration as HH:MM:SS
+    const formatDuration = (startTime) => {
+        if (!startTime) return '00:00:00';
+        const now = new Date();
+        const start = new Date(startTime);
+        const diffMs = now - start;
+        
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+        
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    };
+
+    // Handle start session
+    const handleStartSession = async () => {
+        if (sessionStarted) {
+            // Show confirmation modal
+            setShowEndSessionModal(true);
+            return;
+        }
+
+        const jobIdParam = searchParams.get('jobId');
+        const jobNo = Number(jobIdParam ?? params?.id ?? selectedJobId);
+        
+        if (!jobNo || Number.isNaN(jobNo)) {
+            toast.error('Unable to determine job number');
+            return;
+        }
+        
+        try {
+            const result = await sessionAPI.startSession(jobNo);
+            const startTime = result?.start_time || new Date().toISOString();
+            
+            setSessionStarted(true);
+            setSessionStartTime(startTime);
+            setSessionDuration('00:00:00');
+            
+            // Update task status
+            setTask(prev => prev ? { ...prev, status: 'session-started' } : null);
+            
+            toast.success('Session started successfully');
+        } catch (err) {
+            console.error('Failed to start session:', err);
+            toast.error(err?.message || 'Failed to start session');
+        }
+    };
+
+    // Handle confirm end session
+    const handleConfirmEndSession = async () => {
+        const jobIdParam = searchParams.get('jobId');
+        const jobNo = Number(jobIdParam ?? params?.id ?? selectedJobId);
+        
+        if (!jobNo || Number.isNaN(jobNo)) {
+            toast.error('Unable to determine job number');
+            setShowEndSessionModal(false);
+            return;
+        }
+
+        try {
+            // Call end session API
+            await sessionAPI.endSession(jobNo);
+            
+            // Update local state
+            setSessionStarted(false);
+            setSessionStartTime(null);
+            setSessionDuration('00:00:00');
+            setShowEndSessionModal(false);
+            
+            // Update task status to Completed
+            setTask(prev => prev ? { ...prev, status: 'Completed' } : null);
+            
+            toast.success('Session ended successfully');
+        } catch (err) {
+            console.error('Failed to end session:', err);
+            toast.error(err?.message || 'Failed to end session');
+        }
+    };
+
+    // Check session status when task loads and fetch actual start time
+    useEffect(() => {
+        const fetchSessionStatus = async () => {
+            if (!task) return;
+
+            const jobIdParam = searchParams.get('jobId');
+            const jobNo = Number(jobIdParam ?? params?.id ?? selectedJobId);
+            
+            if (!jobNo || Number.isNaN(jobNo)) {
+                return;
+            }
+
+            // Reset ref if job number changed (new job loaded)
+            if (lastFetchedJobRef.current !== null && lastFetchedJobRef.current !== jobNo) {
+                lastFetchedJobRef.current = null;
+            }
+            
+            // Prevent re-fetching if we've already fetched for this job
+            // But allow fetch if we don't have sessionStartTime yet (needed for timer)
+            if (lastFetchedJobRef.current === jobNo && sessionStartTime) {
+                return;
+            }
+
+            // Mark this job as fetched
+            lastFetchedJobRef.current = jobNo;
+
+            try {
+                const result = await sessionAPI.getSessionStartTime(jobNo);
+                console.log('getSessionStartTime result:', result);
+                
+                if (result && result.success === true) {
+                    const apiStatus = result.status;
+                    
+                    // Handle COMPLETED status - JobStatusEnum.COMPLETED = "Completed"
+                    if (apiStatus === 'Completed') {
+                        setSessionStarted(false);
+                        setSessionStartTime(null);
+                        setSessionDuration('00:00:00');
+                        // Only update task status if it's different to prevent infinite loop
+                        setTask(prev => prev && prev.status !== 'Completed' ? { ...prev, status: 'Completed' } : prev);
+                        return;
+                    }
+                    
+                    // Handle SESSION_IN_PROGRESS status - JobStatusEnum.SESSION_IN_PROGRESS = "Session Started"
+                    if (apiStatus === 'Session Started') {
+                        if (result.result && typeof result.result === 'string') {
+                            // result is ISO string of start time
+                            setSessionStarted(true);
+                            setSessionStartTime(result.result);
+                            setSessionDuration('00:00:00'); // Initialize timer
+                            // Only update task status if it's different to prevent infinite loop
+                            setTask(prev => prev && prev.status !== 'Session Started' ? { ...prev, status: 'Session Started' } : prev);
+                        } else {
+                            setSessionStarted(false);
+                            setSessionStartTime(null);
+                        }
+                        return;
+                    }
+                    
+                    // Handle SESSION_NOT_STARTED status - JobStatusEnum.SESSION_NOT_STARTED = "Session not started"
+                    if (apiStatus === 'Session not started') {
+                        setSessionStarted(false);
+                        setSessionStartTime(null);
+                        setSessionDuration('00:00:00');
+                        // Only update task status if it's different to prevent infinite loop
+                        setTask(prev => prev && prev.status !== 'Session not started' ? { ...prev, status: 'Session not started' } : prev);
+                        return;
+                    }
+                    
+                    // Handle SCHEDULED status - JobStatusEnum.SCHEDULED = "Scheduled"
+                    if (apiStatus === 'Scheduled') {
+                        setSessionStarted(false);
+                        setSessionStartTime(null);
+                        setSessionDuration('00:00:00');
+                        // Only update task status if it's different to prevent infinite loop
+                        setTask(prev => prev && prev.status !== 'Scheduled' ? { ...prev, status: 'Scheduled' } : prev);
+                        return;
+                    }
+                } else if (result && result.success === false) {
+                    // API returned error
+                    setSessionStarted(false);
+                    setSessionStartTime(null);
+                    setSessionDuration('00:00:00');
+                }
+            } catch (err) {
+                console.error('Failed to fetch session status:', err);
+                setSessionStarted(false);
+                setSessionStartTime(null);
+            }
+        };
+
+        fetchSessionStatus();
+        // Dependencies: selectedJobId (main trigger), task?.id (when task changes), 
+        // but NOT sessionStartTime to avoid re-fetch loops
+    }, [selectedJobId, task?.id, searchParams, params]);
+
+    // Timer effect - updates duration every second when session is active
+    useEffect(() => {
+        if (!sessionStarted || !sessionStartTime) {
+            setSessionDuration('00:00:00');
+            return;
+        }
+
+        // Update immediately
+        setSessionDuration(formatDuration(sessionStartTime));
+
+        // Update every second
+        const interval = setInterval(() => {
+            setSessionDuration(formatDuration(sessionStartTime));
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [sessionStarted, sessionStartTime]);
 
     const progress = Math.round((completedSteps.length / steps.length) * 100);
+
+    // Status configuration mapping
+    const statusConfig = {
+        'completed': {
+            style: 'bg-green-100 text-green-700',
+            display: 'Completed'
+        },
+        'session started': {
+            style: 'bg-orange-50 text-orange-600',
+            display: 'Session Started'
+        },
+        'scheduled': {
+            style: 'bg-gray-100 text-gray-600',
+            display: 'Scheduled'
+        },
+        'session not started': {
+            style: 'bg-gray-100 text-gray-600',
+            display: 'Session not Started'
+        }
+    };
+
+    // Normalize status key (handles variations like 'session-started', 'session_started', 'session started')
+    const normalizeStatus = (status) => {
+        if (!status) return 'scheduled';
+        const normalized = status.toLowerCase().trim().replace(/[_-]/g, ' ');
+        return normalized;
+    };
+
+    // Get status badge styling based on task status
+    const getStatusBadgeStyle = (status) => {
+        const normalized = normalizeStatus(status);
+        const config = statusConfig[normalized] || statusConfig.scheduled;
+        return config.style;
+    };
+
+    // Get display text for status
+    const getStatusDisplayText = (status) => {
+        const normalized = normalizeStatus(status);
+        const config = statusConfig[normalized] || statusConfig.scheduled;
+        return config.display;
+    };
 
     return (
         <>
@@ -1731,22 +1950,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                         <>
                             {/* Status Badge */}
                             <div className="flex items-center justify-between mb-4">
-                                <span className={`px-3 py-1 text-sm font-medium rounded-lg ${
-                                    task.status === 'videos-pending' 
-                                        ? 'bg-red-50 text-red-600' 
-                                        : task.status === 'session-started'
-                                        ? 'bg-orange-50 text-orange-600'
-                                        : task.status === 'session-not-started'
-                                        ? 'bg-gray-100 text-gray-600'
-                                        : 'bg-gray-100 text-gray-600'
-                                }`}>
-                                    {task.status === 'videos-pending' 
-                                        ? 'Videos Pending' 
-                                        : task.status === 'session-started'
-                                        ? 'Session Started'
-                                        : task.status === 'session-not-started'
-                                        ? 'Session not Started'
-                                        : 'Scheduled'}
+                                <span className={`px-3 py-1 text-sm font-medium rounded-lg ${getStatusBadgeStyle(task.status)}`}>
+                                    {getStatusDisplayText(task.status)}
                                 </span>
                                 <button className="p-1 hover:bg-gray-100 rounded">
                                     <MoreVertical className="w-5 h-5 text-gray-400" />
@@ -1782,10 +1987,40 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                 </div>
                             </div>
 
-                            {/* Start Session Button */}
-                            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors mb-6">
-                                Start Session
-                            </button>
+                            {/* Start/End Session Button */}
+                            {(() => {
+                                const isCompleted = task?.status === 'Completed' || 
+                                                   (task?.status && task.status.toLowerCase().includes('completed'));
+                                
+                                if (isCompleted) {
+                                    return (
+                                        <button 
+                                            disabled
+                                            className="w-full bg-green-600 text-white font-semibold py-3 rounded-lg mb-6 cursor-not-allowed opacity-100"
+                                        >
+                                            Completed
+                                        </button>
+                                    );
+                                } else if (sessionStarted) {
+                                    return (
+                                        <button 
+                                            onClick={handleStartSession}
+                                            className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-lg transition-colors mb-6"
+                                        >
+                                            End Session ({sessionDuration})
+                                        </button>
+                                    );
+                                } else {
+                                    return (
+                                        <button 
+                                            onClick={handleStartSession}
+                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors mb-6"
+                                        >
+                                            Start Session
+                                        </button>
+                                    );
+                                }
+                            })()}
                         </>
                     ) : (
                         <div className="flex items-center justify-center py-12">
@@ -1932,6 +2167,41 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                     </div>
                 </div>
             </div>
+
+            {/* End Session Confirmation Modal */}
+            {showEndSessionModal && (
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-lg flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+                        {/* Modal Header with Icon */}
+                        <div className="flex items-start p-6 pb-4">
+                            <div className="flex-shrink-0 w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center mr-4">
+                                <Info className="w-6 h-6 text-white" />
+                            </div>
+                            <div className="flex-1">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">End Session</h3>
+                                <p className="text-sm text-gray-600">Are you sure you want to end session?</p>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer with Buttons */}
+                        <div className="flex justify-end gap-3 p-6 pt-4 border-t border-gray-200">
+                            <button
+                                onClick={() => setShowEndSessionModal(false)}
+                                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleConfirmEndSession}
+                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+                            >
+                                Confirm
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </>
     );
 }
+
