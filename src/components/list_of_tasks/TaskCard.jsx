@@ -1,17 +1,23 @@
 "use client";
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPin, Clock, MoreVertical } from 'lucide-react';
+import CancelJobModal from '@/components/common/CancelJobModal';
 
-export default function TaskCard({ task, isHighlighted = false, isSelected = false, onSelect }) {
+export default function TaskCard({ task, isHighlighted = false, isSelected = false, onSelect, isUpcoming = false, onCancelJob }) {
     const router = useRouter();
+    const [showCancelModal, setShowCancelModal] = useState(false);
 
     const getStatusBadge = () => {
+        // Don't show session status for upcoming tasks
+        if (isUpcoming) {
+            return null;
+        }
+        
         switch (task.status) {
-            case 'videos-pending':
-                return <span className="px-3 py-1 bg-red-50 text-red-600 text-xs font-medium rounded-2xl">Videos Pending</span>;
-            case 'session-started':
+            case 'Session Started':
                 return <span className="px-3 py-1 bg-orange-50 text-orange-600 text-xs font-medium rounded-2xl">Session Started</span>;
-            case 'session-not-started':
+            case 'Session not Started':
                 return <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-2xl">Session not Started</span>;
             default:
                 return null;
@@ -20,8 +26,14 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
 
     const handleMoreClick = (e) => {
         e.stopPropagation();
-        onSelect && onSelect(task.id);
-        router.push(`/dashboard/task-details/${task.caseInfo?.id}?jobId=${task.id}`);
+        setShowCancelModal(true);
+    };
+
+    const handleCancelConfirm = async (cancelData) => {
+        if (onCancelJob) {
+            await onCancelJob(task.id, cancelData);
+        }
+        setShowCancelModal(false);
     };
 
     const handleCardClick = () => {
@@ -32,16 +44,17 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
     };
 
     return (
-        <div
-            onClick={handleCardClick}
-            className={`
-                ${isHighlighted && !isSelected ? 'bg-blue-500 text-white' : isSelected ? 'bg-blue-500 text-white' : 'bg-white'} 
-                ${isSelected ? 'ring-2 ring-blue-600 scale-[1.01]' : ''} 
-                rounded-lg p-4 md:p-5 shadow-sm border 
-                ${isHighlighted || isSelected ? 'border-blue-600' : 'border-gray-200'} 
-                hover:shadow-md transition-all cursor-pointer
-            `}
-        >
+        <>
+            <div
+                onClick={handleCardClick}
+                className={`
+                    ${isHighlighted && !isSelected ? 'bg-blue-500 text-white' : isSelected ? 'bg-blue-500 text-white' : 'bg-white'} 
+                    ${isSelected ? 'ring-2 ring-blue-600 scale-[1.01]' : ''} 
+                    rounded-lg p-4 md:p-5 shadow-sm border 
+                    ${isHighlighted || isSelected ? 'border-blue-600' : 'border-gray-200'} 
+                    hover:shadow-md transition-all cursor-pointer
+                `}
+            >
             <div className="flex flex-col md:flex-row md:items-center gap-4">
                 {/* Date/Time Column */}
                 <div className={`flex-shrink-0 ${isHighlighted || isSelected ? 'text-white' : 'text-gray-900'} ${isSelected ? 'text-base font-semibold' : ''}`}>
@@ -110,6 +123,13 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                     </div>
                 </div>
             </div>
-        </div>
+            </div>
+            <CancelJobModal
+                isOpen={showCancelModal}
+                onClose={() => setShowCancelModal(false)}
+                onConfirm={handleCancelConfirm}
+                jobId={task.jobId}
+            />
+        </>
     );
 }

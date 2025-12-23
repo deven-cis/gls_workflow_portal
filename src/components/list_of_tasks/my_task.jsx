@@ -7,9 +7,9 @@ import TaskCard from '@/components/list_of_tasks/TaskCard';
 import TaskSection from '@/components/list_of_tasks/TaskSection';
 import EmptyState from '@/components/empty_state/EmptyState';
 import { CalendarView } from '@/components/calendar_view/CalendarView';
-import { taskAPI } from '@/services/api';
 import { getUser } from '@/lib/auth';
-
+import { casesAPI } from '@/services/cases_apis';
+import { useToast } from '@/contexts/ToastContext';
 export default function MyTasks() {
     const [activeView, setActiveView] = useState('list');
     const [selectedTaskId, setSelectedTaskId] = useState(null);
@@ -18,7 +18,9 @@ export default function MyTasks() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [userName, setUserName] = useState('User');
+    const [cancellingJobId, setCancellingJobId] = useState(null);
     const searchParams = useSearchParams();
+    const toast = useToast();
 
     // Load tasks from backend APIs
     useEffect(() => {
@@ -27,8 +29,8 @@ export default function MyTasks() {
             setError(null);
             try {
                 const [pending, upcoming] = await Promise.all([
-                    taskAPI.getPendingTasks(),
-                    taskAPI.getUpcomingTasks(),
+                    casesAPI.getPendingTasks(),
+                    casesAPI.getUpcomingTasks(),
                 ]);
                 setPendingTasks(pending || []);
                 setUpcomingTasks(upcoming || []);
@@ -58,6 +60,42 @@ export default function MyTasks() {
 
     const handleTaskSelect = (taskId) => {
         setSelectedTaskId(taskId);
+    };
+
+    const handleCancelJob = async (taskId, cancelData) => {
+        try {
+            setCancellingJobId(taskId);
+            
+            // taskId is the job_no (number)
+            const jobNo = taskId;
+            
+            // Call the cancel job API
+            const response = await casesAPI.cancelJob(jobNo, cancelData);
+            
+            // Check if cancellation was successful
+            if (response && response.success) {
+                toast.success(response.message || 'Job cancelled successfully');
+                
+                // Remove the canceled job from the list immediately
+                setPendingTasks(prev => prev.filter(task => task.id !== taskId));
+                setUpcomingTasks(prev => prev.filter(task => task.id !== taskId));
+                
+                // Clear selection if the canceled task was selected
+                if (selectedTaskId === taskId) {
+                    setSelectedTaskId(null);
+                }
+            } else {
+                // Handle error response from backend
+                const errorMessage = response?.message || 'Failed to cancel job';
+                toast.error(errorMessage);
+            }
+        } catch (err) {
+            console.error('Failed to cancel job:', err);
+            const errorMessage = err?.body?.message || err?.message || 'Failed to cancel job. Please try again.';
+            toast.error(errorMessage);
+        } finally {
+            setCancellingJobId(null);
+        }
     };
 
     const hasTasks = pendingTasks.length > 0 || upcomingTasks.length > 0;
@@ -141,6 +179,7 @@ export default function MyTasks() {
                                         task={task}
                                         isSelected={selectedTaskId === task.id}
                                         onSelect={handleTaskSelect}
+                                        onCancelJob={handleCancelJob}
                                     />
                                 ))}
                             </TaskSection>
@@ -155,6 +194,8 @@ export default function MyTasks() {
                                         task={task}
                                         isSelected={selectedTaskId === task.id}
                                         onSelect={handleTaskSelect}
+                                        isUpcoming={true}
+                                        onCancelJob={handleCancelJob}
                                     />
                                 ))}
                             </TaskSection>

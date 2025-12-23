@@ -224,18 +224,33 @@ export const galloInstance = async (endpoint, options = {}) => {
         const err = new Error(`API Error: ${response.status} ${message}`);
         err.status = response.status;
         err.body = body;
-        throw err;
+        err.message = message; // Store the actual message
+        
+        // For all errors (404, 422, 400, 500+), return structured error instead of throwing
+        // This prevents error overlays - let components handle errors gracefully
+        return {
+          success: false,
+          status_code: response.status,
+          message: message,
+          result: null,
+          error: err
+        };
       }
 
       // return parsed JSON when possible, otherwise raw text
       return typeof body === 'string' && !contentType.includes('application/json') ? { data: body } : body;
     } catch (error) {
-      // Don't log 404 errors - they're expected for resources that don't exist yet
-      // (e.g., billing/equipment time that hasn't been created)
-      if (error?.status !== 404) {
-        console.error(`API Call Failed: ${endpoint}`, error);
-      }
-      throw error;
+      // Log all errors to console only (no error overlay)
+      console.error(`API Call Failed: ${endpoint}`, error);
+      
+      // Return error structure instead of throwing - prevents error overlays
+      return {
+        success: false,
+        status_code: error?.status || 500,
+        message: error?.message || 'Request failed',
+        result: null,
+        error: error
+      };
     }
   };
   

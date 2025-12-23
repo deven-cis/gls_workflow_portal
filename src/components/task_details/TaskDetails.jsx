@@ -15,14 +15,14 @@ import WitnessManagement from '@/components/task_details/taskSections/WitnessMan
 import AttorneyOrders from '@/components/task_details/taskSections/AttorneyOrders';
 import BillingInfo from '@/components/task_details/taskSections/BillingInfo';
 import EquipmentSection from '@/components/task_details/taskSections/EquipmentSection';
-import { taskAPI } from '@/services/api';
 import { billingAPI } from '@/services/billings_apis';
 import { equipmentTimeAPI } from '@/services/equipment_time_apis';
 import { witnessesAPI } from '@/services/witnesses_apis';
 import { attorneysAPI } from '@/services/attorneys_apis';
 import { sessionAPI } from '@/services/session_button';
 import { useToast } from '@/contexts/ToastContext';
-
+import { casesAPI } from '@/services/cases_apis';
+import CancelJobModal from '@/components/common/CancelJobModal';
 export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const params = useParams();
     const router = useRouter();
@@ -55,6 +55,10 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const [sessionDuration, setSessionDuration] = useState('00:00:00');
     const [showEndSessionModal, setShowEndSessionModal] = useState(false);
     const lastFetchedJobRef = useRef(null);
+    const [isUpcomingTask, setIsUpcomingTask] = useState(false); // Track if task is from upcoming tasks
+    const [showMenu, setShowMenu] = useState(false);
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const menuRef = useRef(null);
     // seed witnesses from page data
     useEffect(() => {
         if (!Array.isArray(witnessesData)) return;
@@ -198,6 +202,10 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     }, [caseInfo]);
   
     const handleEditCase = () => {
+        // Prevent editing for upcoming tasks
+        if (isUpcomingTask) {
+            return;
+        }
         setEditingCase(true);
         // Store current state as pending changes for cancel
         setPendingCaseChanges({ ...formData });
@@ -241,7 +249,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         };
 
         try {
-            await taskAPI.editCase(caseId, payload);
+            await casesAPI.editCase(caseId, payload);
             // Update formData with saved values
             setFormData({
                 caseName: caseName,
@@ -529,6 +537,10 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     };
 
     const handleEditBilling = () => {
+        // Prevent editing for upcoming tasks
+        if (isUpcomingTask) {
+            return;
+        }
         setEditingBilling(true);
         // Store current state as pending changes for cancel (deep copy documents array)
         setPendingBillingChanges({
@@ -777,6 +789,10 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     };
 
     const handleEditEquipment = () => {
+        // Prevent editing for upcoming tasks
+        if (isUpcomingTask) {
+            return;
+        }
         setEditingEquipment(true);
         // Store current state as pending changes for cancel
         setPendingEquipmentChanges({
@@ -1104,20 +1120,22 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
 
             try {
                 // Try to get job from pending tasks first
-                const pendingTasks = await taskAPI.getPendingTasks();
+                const pendingTasks = await casesAPI.getPendingTasks();
                 const foundJob = pendingTasks.find(t => t.id === selectedJobId || t.jobId === `Job${selectedJobId}`);
                 
                 if (foundJob) {
                     setTask(foundJob);
+                    setIsUpcomingTask(false); // It's a pending task
                     return;
                 }
 
                 // If not found in pending, try upcoming tasks
-                const upcomingTasks = await taskAPI.getUpcomingTasks();
+                const upcomingTasks = await casesAPI.getUpcomingTasks();
                 const foundUpcomingJob = upcomingTasks.find(t => t.id === selectedJobId || t.jobId === `Job${selectedJobId}`);
                 
                 if (foundUpcomingJob) {
                     setTask(foundUpcomingJob);
+                    setIsUpcomingTask(true); // It's an upcoming task - disable all sections
                     return;
                 }
 
@@ -1251,6 +1269,11 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     }, [selectedJobId]);
 
     const toggleStep = (stepNumber) => {
+        // Disable section toggling for upcoming tasks
+        if (isUpcomingTask) {
+            return;
+        }
+        
         const isExpanding = expandedStep !== stepNumber;
         setExpandedStep(expandedStep === stepNumber ? null : stepNumber);
         
@@ -1289,6 +1312,11 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     };
 
     const toggleStepDone = (stepNumber) => {
+        // Disable "Mark as Done" for upcoming tasks
+        if (isUpcomingTask) {
+            return;
+        }
+        
         // If marking step 3 (Attorney Orders) as done, validate all attorney forms first
         if (stepNumber === 3 && !completedSteps.includes(stepNumber)) {
             // Check if there are any attorneys
@@ -1718,6 +1746,11 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
 
     // Handle start session
     const handleStartSession = async () => {
+        // Prevent session start/end for upcoming tasks
+        if (isUpcomingTask) {
+            return;
+        }
+        
         if (sessionStarted) {
             // Show confirmation modal
             setShowEndSessionModal(true);
@@ -1914,6 +1947,10 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         'session not started': {
             style: 'bg-gray-100 text-gray-600',
             display: 'Session not Started'
+        },
+        'cancelled': {
+            style: 'bg-red-100 text-red-700',
+            display: 'Cancelled'
         }
     };
 
@@ -1938,6 +1975,61 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         return config.display;
     };
 
+    // Handle cancel job
+    const handleCancelJob = async (cancelData) => {
+        try {
+            if (!selectedJobId) {
+                toast.error('Job ID not found');
+                return;
+            }
+
+            const jobNo = parseInt(selectedJobId, 10);
+            if (isNaN(jobNo)) {
+                toast.error('Invalid job ID');
+                return;
+            }
+
+            const response = await casesAPI.cancelJob(jobNo, cancelData);
+            
+            if (response && response.success) {
+                toast.success(response.message || 'Job cancelled successfully');
+                
+                // Close modals
+                setShowCancelModal(false);
+                setShowMenu(false);
+                
+                // Redirect to tasks list after a short delay to show the toast
+                setTimeout(() => {
+                    router.push('/dashboard/list_of_tasks');
+                }, 500);
+            } else {
+                const errorMessage = response?.message || 'Failed to cancel job';
+                toast.error(errorMessage);
+            }
+        } catch (err) {
+            console.error('Failed to cancel job:', err);
+            const errorMessage = response?.message || 'Failed to cancel job. Please try again.';
+            toast.error(errorMessage);
+        }
+    };
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setShowMenu(false);
+            }
+        };
+
+        if (showMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showMenu]);
+
     return (
         <>
             {/* Header is provided globally via `Header` in `LayoutWrapper` */}
@@ -1953,9 +2045,30 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                 <span className={`px-3 py-1 text-sm font-medium rounded-lg ${getStatusBadgeStyle(task.status)}`}>
                                     {getStatusDisplayText(task.status)}
                                 </span>
-                                <button className="p-1 hover:bg-gray-100 rounded">
-                                    <MoreVertical className="w-5 h-5 text-gray-400" />
-                                </button>
+                                <div className="relative" ref={menuRef}>
+                                    <button 
+                                        onClick={() => setShowMenu(!showMenu)}
+                                        className="p-1 hover:bg-gray-100 rounded transition-colors"
+                                    >
+                                        <MoreVertical className="w-5 h-5 text-gray-400" />
+                                    </button>
+                                    
+                                    {/* Dropdown Menu */}
+                                    {showMenu && (
+                                        <div className="absolute right-0 top-8 z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px]">
+                                            <button
+                                                onClick={() => {
+                                                    setShowMenu(false);
+                                                    setShowCancelModal(true);
+                                                }}
+                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                <span>Cancel Job</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Task Title */}
@@ -2005,7 +2118,12 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                     return (
                                         <button 
                                             onClick={handleStartSession}
-                                            className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-lg transition-colors mb-6"
+                                            disabled={isUpcomingTask}
+                                            className={`w-full font-semibold py-3 rounded-lg transition-colors mb-6 ${
+                                                isUpcomingTask
+                                                    ? 'bg-gray-400 text-white cursor-not-allowed opacity-60'
+                                                    : 'bg-red-500 hover:bg-red-600 text-white'
+                                            }`}
                                         >
                                             End Session ({sessionDuration})
                                         </button>
@@ -2014,7 +2132,12 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                     return (
                                         <button 
                                             onClick={handleStartSession}
-                                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors mb-6"
+                                            disabled={isUpcomingTask}
+                                            className={`w-full font-semibold py-3 rounded-lg transition-colors mb-6 ${
+                                                isUpcomingTask
+                                                    ? 'bg-gray-400 text-white cursor-not-allowed opacity-60'
+                                                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                            }`}
                                         >
                                             Start Session
                                         </button>
@@ -2051,22 +2174,31 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                             >
                                 {/* Step Header */}
                                 <div
-                                    onClick={() => toggleStep(step.number)}
-                                    className="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                    onClick={() => !isUpcomingTask && toggleStep(step.number)}
+                                    className={`p-4 flex items-center justify-between transition-colors ${
+                                        isUpcomingTask 
+                                            ? 'cursor-not-allowed opacity-60' 
+                                            : 'cursor-pointer hover:bg-gray-50'
+                                    }`}
                                 >
-                                    <h4 className="text-base font-medium text-gray-900">
+                                    <h4 className={`text-base font-medium ${isUpcomingTask ? 'text-gray-500' : 'text-gray-900'}`}>
                                         {step.number}. {step.title}
                                     </h4>
                                     <div className="flex items-center gap-2">
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                toggleStepDone(step.number);
+                                                if (!isUpcomingTask) {
+                                                    toggleStepDone(step.number);
+                                                }
                                             }}
+                                            disabled={isUpcomingTask}
                                             className={`text-sm font-medium px-3 py-1 rounded-md transition-colors ${
-                                                completedSteps.includes(step.number)
-                                                    ? 'bg-green-50 text-green-600'
-                                                    : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                                                isUpcomingTask
+                                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                    : completedSteps.includes(step.number)
+                                                        ? 'bg-green-50 text-green-600'
+                                                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                                             }`}
                                         >
                                             {completedSteps.includes(step.number) ? 'Done' : 'Mark as Done'}
@@ -2201,6 +2333,14 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                     </div>
                 </div>
             )}
+
+            {/* Cancel Job Modal */}
+            <CancelJobModal
+                isOpen={showCancelModal}
+                onClose={() => setShowCancelModal(false)}
+                onConfirm={handleCancelJob}
+                jobId={task?.jobId || `Job${selectedJobId}`}
+            />
         </>
     );
 }

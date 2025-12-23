@@ -2,8 +2,8 @@
 import TaskDetails from '@/components/task_details/TaskDetails';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
-import { taskAPI } from '@/services/api';
 import { witnessesAPI } from '@/services/witnesses_apis';
+import { casesAPI } from '@/services/cases_apis';
 
 export default function TaskDetailsPage() {
   const params = useParams();
@@ -17,7 +17,7 @@ export default function TaskDetailsPage() {
     if (!taskCaseId) return;
     (async () => {
       try {
-        const data = await taskAPI.getCaseById(taskCaseId);
+        const data = await casesAPI.getCaseById(taskCaseId);
         console.log('Fetched case info:', data);
         setCaseInfo(data);
       } catch (err) {
