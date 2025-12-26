@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // Reusable date range picker for history filters (completed / cancelled jobs)
@@ -15,8 +15,17 @@ export default function HistoryDateRangePicker({
   );
   const [hoveredDate, setHoveredDate] = useState(null);
   const [selectingStart, setSelectingStart] = useState(true);
-  const [tempStartDate, setTempStartDate] = useState(startDate);
-  const [tempEndDate, setTempEndDate] = useState(endDate);
+  const [tempStartDate, setTempStartDate] = useState(startDate || null);
+  const [tempEndDate, setTempEndDate] = useState(endDate || null);
+
+  // Sync temp dates when props change
+  useEffect(() => {
+    setTempStartDate(startDate || null);
+    setTempEndDate(endDate || null);
+    if (startDate) {
+      setCurrentMonth(new Date(startDate));
+    }
+  }, [startDate, endDate]);
 
   const monthNames = [
     "January",
@@ -144,12 +153,21 @@ export default function HistoryDateRangePicker({
     if (tempStartDate && tempEndDate) {
       onDateChange?.(tempStartDate, tempEndDate);
       onClose?.();
+    } else {
+      // If dates are cleared, reset filter
+      onDateChange?.(null, null);
+      onClose?.();
     }
   };
 
   const handleCancel = () => {
-    setTempStartDate(startDate);
-    setTempEndDate(endDate);
+    // Reset calendar to empty state
+    setTempStartDate(null);
+    setTempEndDate(null);
+    setSelectingStart(true);
+    setHoveredDate(null);
+    // Reset the date filter to show all jobs
+    onDateChange?.(null, null);
     onClose?.();
   };
 
@@ -179,7 +197,7 @@ export default function HistoryDateRangePicker({
     <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-[360px] md:max-w-[380px] overflow-hidden">
       {/* Calendar Header */}
       <div className="px-5 py-4 border-b border-gray-100">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={previousMonth}
@@ -240,9 +258,9 @@ export default function HistoryDateRangePicker({
                       isStart || isEnd
                         ? "bg-red-700 text-white shadow-md hover:bg-red-800"
                         : inRange
-                        ? "bg-red-50 text-red-900"
+                        ? "bg-blue-50 text-gray-900"
                         : inHover
-                        ? "bg-red-50 text-red-900"
+                        ? "bg-blue-50 text-gray-900"
                         : isCurrentMonth
                         ? "text-gray-700 hover:bg-gray-100"
                         : "text-gray-300 hover:bg-gray-50"
@@ -261,7 +279,7 @@ export default function HistoryDateRangePicker({
                 </button>
 
                 {(inRange || inHover) && !isStart && !isEnd && (
-                  <div className="absolute inset-0 mx-auto h-8 bg-red-50 rounded-full -z-10" />
+                  <div className="absolute inset-0 mx-auto h-8 bg-blue-50 rounded-full -z-10" />
                 )}
               </div>
             );
@@ -271,28 +289,28 @@ export default function HistoryDateRangePicker({
 
       {/* Footer Buttons */}
       <div className="px-5 py-4 border-t border-gray-100 flex justify-between items-center bg-gray-50">
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-gray-700 font-normal">
           {tempStartDate && tempEndDate ? (
             <span>
-              {formatDateDisplay(tempStartDate)} -{" "}
-              {formatDateDisplay(tempEndDate)}
+              {formatDateDisplay(tempStartDate)} To {formatDateDisplay(tempEndDate)}
             </span>
           ) : (
-            <span>Select a date range</span>
+            <span className="text-gray-500">Select a date range</span>
           )}
         </div>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={handleCancel}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleApply}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-red-700 rounded-lg hover:bg-red-800 transition-colors"
+            disabled={!tempStartDate || !tempEndDate}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-700 rounded-lg hover:bg-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Apply
           </button>

@@ -14,8 +14,8 @@ export default function HistoryView() {
     const [activeTab, setActiveTab] = useState('completed');
     const [activeView, setActiveView] = useState('History');
     const [showCalendar, setShowCalendar] = useState(false);
-    const [startDate, setStartDate] = useState(new Date(2025, 9, 1)); // Oct 1, 2025
-    const [endDate, setEndDate] = useState(new Date(2025, 9, 24)); // Oct 24, 2025
+    const [startDate, setStartDate] = useState(null); // No filter by default
+    const [endDate, setEndDate] = useState(null); // No filter by default
     const [selectedJob, setSelectedJob] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
@@ -48,13 +48,13 @@ export default function HistoryView() {
         };
     }, [showCalendar]);
 
-    // Fetch jobs based on active tab
+    // Fetch jobs based on active tab and date range
     useEffect(() => {
         const fetchJobs = async () => {
             setLoading(true);
             try {
                 const type = activeTab === 'completed' ? 'Completed' : 'Cancelled';
-                const jobs = await historyAPI.getJobsByType(type);
+                const jobs = await historyAPI.getJobsByType(type, startDate, endDate);
                 
                 if (activeTab === 'cancelled') {
                     setCancelledJobs(jobs || []);
@@ -75,7 +75,7 @@ export default function HistoryView() {
         };
 
         fetchJobs();
-    }, [activeTab]);
+    }, [activeTab, startDate, endDate]);
 
     const handleViewChange = (view) => {
         setActiveView(view);
@@ -86,8 +86,14 @@ export default function HistoryView() {
     };
 
     const handleDateChange = (start, end) => {
-        setStartDate(start);
-        setEndDate(end);
+        // If both dates are provided, set them. Otherwise reset to null (no filter)
+        if (start && end) {
+            setStartDate(start);
+            setEndDate(end);
+        } else {
+            setStartDate(null);
+            setEndDate(null);
+        }
     };
 
     const handleJobClick = async (item) => {
@@ -104,13 +110,13 @@ export default function HistoryView() {
                 if (!jobDetailsData) {
                     // Fallback to basic data if API fails
                     const jobDetails = {
+                        jobNo: jobNo, // Add job number for download all functionality
                         jobTitle: item.title,
                         location: item.location,
                         time: `${item.date} ${item.time}`,
                         caseName: item.caseInfo?.name || item.title,
                         caseNumber: item.caseInfo?.caseNumber || '',
-                        plaintiffAttorney: 'N/A',
-                        defenseAttorney: 'N/A',
+                        attorneys: [],
                         witnesses: [],
                         recordings: []
                     };
@@ -140,14 +146,16 @@ export default function HistoryView() {
                 });
                 
                 const jobDetails = {
+                    jobNo: jobNo, // Add job number for download all functionality
                     jobTitle: item.title,
                     location: item.location,
                     time: `${item.date} ${item.time}`,
                     caseName: item.caseInfo?.name || item.title,
                     caseNumber: item.caseInfo?.caseNumber || '',
-                    // Use first attorney as plaintiff, second as defense (or N/A if not available)
-                    plaintiffAttorney: attorneys[0]?.attorney_name || 'N/A',
-                    defenseAttorney: attorneys[1]?.attorney_name || (attorneys.length === 1 ? 'N/A' : attorneys[0]?.attorney_name || 'N/A'),
+                    attorneys: attorneys.map(a => ({
+                        name: a.attorney_name || 'N/A',
+                        firm: a.firm_name || 'N/A'
+                    })),
                     witnesses: witnesses.map(w => ({
                         name: w.witness_name || 'N/A'
                     })),
@@ -192,7 +200,9 @@ export default function HistoryView() {
         } catch (err) {
             console.error('Failed to load job details:', err);
             // Still show modal with available data
+            const jobNo = item.id; // Get job number from item
             const jobDetails = {
+                jobNo: jobNo, // Add job number for download all functionality
                 jobTitle: item.title,
                 location: item.location,
                 time: `${item.date} ${item.time}`,
@@ -201,8 +211,7 @@ export default function HistoryView() {
             };
             
             if (activeTab === 'completed') {
-                jobDetails.plaintiffAttorney = 'N/A';
-                jobDetails.defenseAttorney = 'N/A';
+                jobDetails.attorneys = [];
                 jobDetails.witnesses = [];
                 jobDetails.recordings = [];
                 setSelectedJob(jobDetails);
@@ -230,6 +239,9 @@ export default function HistoryView() {
     };
 
     const formatDateRange = () => {
+        if (!startDate || !endDate) {
+            return 'Select Date Range';
+        }
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const startMonth = monthNames[startDate.getMonth()];
         const endMonth = monthNames[endDate.getMonth()];
@@ -238,7 +250,7 @@ export default function HistoryView() {
         const startYear = startDate.getFullYear();
         const endYear = endDate.getFullYear();
 
-        return `${startMonth} ${startDay}, ${startYear} - ${endMonth} ${endDay}, ${endYear}`;
+        return `${startDay} ${startMonth}, ${startYear} To ${endDay} ${endMonth}, ${endYear}`;
     };
 
     const historyData = activeTab === 'completed' ? completedJobs : cancelledJobs;
@@ -273,28 +285,26 @@ export default function HistoryView() {
                         </button>
                     </div>
 
-                    {hasHistory && (
-                        <div className="relative" ref={calendarRef}>
-                            <button
-                                onClick={() => setShowCalendar(!showCalendar)}
-                                className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium text-sm md:text-base"
-                            >
-                                {formatDateRange()}
-                                <ChevronDown size={16} />
-                            </button>
+                    <div className="relative" ref={calendarRef}>
+                        <button
+                            onClick={() => setShowCalendar(!showCalendar)}
+                            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium text-sm md:text-base"
+                        >
+                            {formatDateRange()}
+                            <ChevronDown size={16} />
+                        </button>
 
-                            {showCalendar && (
-                                <div className="absolute right-0 top-full mt-2 z-50 w-[340px] md:w-[360px]">
-                                    <HistoryDateRangePicker
-                                        startDate={startDate}
-                                        endDate={endDate}
-                                        onDateChange={handleDateChange}
-                                        onClose={() => setShowCalendar(false)}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    )}
+                        {showCalendar && (
+                            <div className="absolute right-0 top-full mt-2 z-50 w-[340px] md:w-[360px]">
+                                <HistoryDateRangePicker
+                                    startDate={startDate}
+                                    endDate={endDate}
+                                    onDateChange={handleDateChange}
+                                    onClose={() => setShowCalendar(false)}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {loading ? (

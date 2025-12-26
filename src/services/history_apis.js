@@ -32,10 +32,34 @@ const mapJobToHistory = (job) => {
 export const historyAPI = {
   // Get cancelled or completed jobs list
   // type: 'Cancelled' or 'Completed'
-  getJobsByType: async (type) => {
+  // startDate: Date object (optional)
+  // endDate: Date object (optional)
+  getJobsByType: async (type, startDate = null, endDate = null) => {
     try {
+      // Format dates to YYYY-MM-DD for API
+      const formatDateForAPI = (date) => {
+        if (!date) return null;
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (startDate) {
+        params.append('start_date', formatDateForAPI(startDate));
+      }
+      if (endDate) {
+        params.append('end_date', formatDateForAPI(endDate));
+      }
+
+      // Build URL with query parameters
+      const queryString = params.toString();
+      const url = `/jobs/cancelled_and_completed_jobs/${type}${queryString ? `?${queryString}` : ''}`;
+      
       // Backend expects type as path parameter: /jobs/cancelled_and_completed_jobs/{type}
-      const response = await galloInstance(`/jobs/cancelled_and_completed_jobs/${type}`);
+      const response = await galloInstance(url);
       
       // Handle error response (backend errors, 500, etc.)
       if (!response || response.success === false) {
@@ -94,6 +118,105 @@ export const historyAPI = {
     } catch (err) {
       console.error(`Failed to fetch cancelled job details for job ${jobNo}:`, err);
       return null;
+    }
+  },
+
+  
+  downloadVideo: async (filePath, fileName) => {
+    try {
+      // Get the access token for authentication
+      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+      const API_BASE_URL = 'http://127.0.0.1:8000';
+      
+      // Construct the full download URL
+      const downloadUrl = `${API_BASE_URL}/${filePath}`;
+      
+      // Fetch the file with authentication
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+      }
+      
+      // Get the blob data
+      const blob = await response.blob();
+      
+      // Create a download link and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName || 'video.mp4';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up the object URL
+      window.URL.revokeObjectURL(url);
+      
+      return true;
+    } catch (err) {
+      console.error('Failed to download video:', err);
+      throw err;
+    }
+  },
+
+  // Download all videos merged into one file
+  // Backend endpoint: GET /jobs/get/{job_no}/completed_details?download_all=true
+  // Returns FileResponse (merged video file)
+  downloadAllVideos: async (jobNo) => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+      const API_BASE_URL = 'http://127.0.0.1:8000';
+      
+      // Construct the download URL with download_all=true parameter
+      const downloadUrl = `${API_BASE_URL}/jobs/get/${jobNo}/completed_details?download_all=true`;
+      
+      // Fetch the merged video file with authentication
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download merged video: ${response.statusText}`);
+      }
+      
+      // Get the blob data
+      const blob = await response.blob();
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('content-disposition');
+      let fileName = 'all_videos_merged.mp4';
+      if (contentDisposition) {
+        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+        if (fileNameMatch && fileNameMatch[1]) {
+          fileName = fileNameMatch[1].replace(/['"]/g, '');
+        }
+      }
+      
+      // Create a download link and trigger download
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // Clean up the object URL
+      window.URL.revokeObjectURL(url);
+      
+      return true;
+    } catch (err) {
+      console.error('Failed to download all videos:', err);
+      throw err;
     }
   },
 };

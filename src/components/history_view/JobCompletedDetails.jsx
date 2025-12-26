@@ -1,16 +1,64 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { MapPin, Clock, X, Download, Video, Pencil } from "lucide-react";
-
-const API_BASE_URL = 'http://127.0.0.1:8000';
+import { historyAPI } from '@/services/history_apis';
+import { useToast } from '@/contexts/ToastContext';
 
 // Read-only job details modal for history view
 export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
+  const [downloadingVideo, setDownloadingVideo] = useState(null);
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const toast = useToast();
+
   if (!isOpen || !jobDetails) return null;
 
   const hasRecordings = Array.isArray(jobDetails.recordings) && jobDetails.recordings.length > 0;
   const hasWitnesses = Array.isArray(jobDetails.witnesses) && jobDetails.witnesses.length > 0;
+  const hasAttorneys = Array.isArray(jobDetails.attorneys) && jobDetails.attorneys.length > 0;
+
+  const handleDownloadVideo = async (recording) => {
+    if (!recording.filePath) {
+      toast.error('File path not available');
+      return;
+    }
+
+    try {
+      setDownloadingVideo(recording.fileName);
+      await historyAPI.downloadVideo(recording.filePath, recording.fileName);
+      toast.success('Video downloaded successfully');
+    } catch (err) {
+      console.error('Download error:', err);
+      toast.error('Failed to download video. Please try again.');
+    } finally {
+      setDownloadingVideo(null);
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (!hasRecordings) return;
+
+    try {
+      setDownloadingAll(true);
+      // Get job number from jobDetails
+      const jobNo = jobDetails.jobNo;
+      
+      if (!jobNo) {
+        toast.error('Job number not available');
+        return;
+      }
+
+      // Use the backend API to merge and download all videos
+      // Backend will merge all videos using FFmpeg and return as a single file
+      await historyAPI.downloadAllVideos(jobNo);
+      toast.success('All videos merged and downloaded successfully');
+    } catch (err) {
+      console.error('Download all error:', err);
+      toast.error('Failed to download merged video. Please try again.');
+    } finally {
+      setDownloadingAll(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-transparent bg-opacity-50 backdrop-blur-sm z-50 flex items-center justify-end p-4">
@@ -81,29 +129,31 @@ export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
             </div>
 
             {/* Attorneys */}
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                Attorneys
-              </h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-500 text-xs">
-                    Plaintiff Attorney
-                  </span>
-                  <span className="text-gray-700 text-xs font-medium">
-                    {jobDetails.plaintiffAttorney || 'N/A'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500 text-xs">
-                    Defense Attorney
-                  </span>
-                  <span className="text-gray-700 text-xs font-medium">
-                    {jobDetails.defenseAttorney || 'N/A'}
-                  </span>
+            {hasAttorneys && (
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                  Attorneys
+                </h3>
+                <div className="space-y-2">
+                  {jobDetails.attorneys.map((attorney, index) => (
+                    <div key={index} className="space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 text-xs">Name</span>
+                        <span className="text-gray-700 text-xs font-medium">
+                          {attorney.name || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500 text-xs">Firm</span>
+                        <span className="text-gray-700 text-xs font-medium">
+                          {attorney.firm || 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
 
             {/* Witnesses */}
             {hasWitnesses && (
@@ -141,24 +191,12 @@ export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
               {hasRecordings && (
                 <button
                   type="button"
-                  onClick={() => {
-                    // Download all recordings
-                    jobDetails.recordings.forEach((recording) => {
-                      if (recording.filePath) {
-                        const downloadUrl = `${API_BASE_URL}/${recording.filePath}`;
-                        const link = document.createElement('a');
-                        link.href = downloadUrl;
-                        link.download = recording.fileName;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }
-                    });
-                  }}
-                  className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2.5 rounded-lg transition-colors font-medium text-sm cursor-pointer"
+                  onClick={handleDownloadAll}
+                  disabled={downloadingAll}
+                  className="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2.5 rounded-lg transition-colors font-medium text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Download size={16} />
-                  Download All
+                  {downloadingAll ? 'Downloading...' : 'Download All'}
                 </button>
               )}
             </div>
@@ -185,19 +223,12 @@ export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
                       {recording.filePath && (
                         <button
                           type="button"
-                          onClick={() => {
-                            const downloadUrl = `${API_BASE_URL}/${recording.filePath}`;
-                            const link = document.createElement('a');
-                            link.href = downloadUrl;
-                            link.download = recording.fileName;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                          }}
-                          className="flex items-center gap-1.5 text-gray-600 hover:text-gray-700 px-3 py-1.5 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium cursor-pointer"
+                          onClick={() => handleDownloadVideo(recording)}
+                          disabled={downloadingVideo === recording.fileName}
+                          className="flex items-center gap-1.5 text-gray-600 hover:text-gray-700 px-3 py-1.5 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Download size={16} />
-                          Download
+                          {downloadingVideo === recording.fileName ? 'Downloading...' : 'Download'}
                         </button>
                       )}
                     </div>
