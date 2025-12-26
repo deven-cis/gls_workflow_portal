@@ -2,11 +2,10 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Menu, Calendar } from 'lucide-react';
-import AvatarMenu from '@/components/layouts/AvatarMenu';
 import TaskCard from '@/components/list_of_tasks/TaskCard';
 import TaskSection from '@/components/list_of_tasks/TaskSection';
 import EmptyState from '@/components/empty_state/EmptyState';
-import { CalendarView } from '@/components/calendar_view/CalendarView';
+import CalendarView from '@/components/calendar_view/CalendarView';
 import { getUser } from '@/lib/auth';
 import { casesAPI } from '@/services/cases_apis';
 import { useToast } from '@/contexts/ToastContext';
@@ -160,13 +159,10 @@ export default function MyTasks() {
                 )}
 
                 {!loading && !error && activeView === 'calendar' ? (
-                    // <CalendarView
-                    //     variant="embed"
-                    //     showHero={false}
-                    //     enableWeekToggle={false}
-                    //     initialViewFilter="month"
-                    // /> 
-                    <EmptyState />
+                    <CalendarView
+                        userName={userName}
+                        showHero={false}
+                    />
 
                 ) : !loading && !error && hasTasks ? (
                     <div className="space-y-6">

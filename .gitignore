@@ -50,3 +50,9 @@ COMPLETION_SUMMARY.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#cursor
+.cursor
+.cursor/debug.log
+.debug.log
+.qodobot/
