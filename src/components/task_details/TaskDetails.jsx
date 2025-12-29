@@ -3,7 +3,15 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter , useSearchParams} from 'next/navigation';
 import { MapPin, Clock, MoreVertical, ChevronDown, ChevronUp, Trash2, Clock as ClockIcon, Check, Search, Info } from 'lucide-react';
 import AvatarMenu from '@/components/layouts/AvatarMenu';
-import { createAttorneySection, getInitials, formatTime12Hour } from '@/lib/utils';
+import { 
+    getInitials, 
+    formatTime12Hour,
+    validateCaseDetails,
+    validateWitnesses,
+    validateAttorneys,
+    validateBillings,
+    validateEquipmentTime
+} from '@/lib/utils';
 import TimeInput from '@/components/task_details/task/TimeInput';
 import AddActionButton from '@/components/task_details/task/AddActionButton';
 import ToggleOption from '@/components/task_details/task/ToggleOption';
@@ -15,1088 +23,204 @@ import WitnessManagement from '@/components/task_details/taskSections/WitnessMan
 import AttorneyOrders from '@/components/task_details/taskSections/AttorneyOrders';
 import BillingInfo from '@/components/task_details/taskSections/BillingInfo';
 import EquipmentSection from '@/components/task_details/taskSections/EquipmentSection';
-import { billingAPI } from '@/services/billings_apis';
-import { equipmentTimeAPI } from '@/services/equipment_time_apis';
 import { witnessesAPI } from '@/services/witnesses_apis';
-import { attorneysAPI } from '@/services/attorneys_apis';
-import { sessionAPI } from '@/services/session_button';
 import { useToast } from '@/contexts/ToastContext';
 import { casesAPI } from '@/services/cases_apis';
 import CancelJobModal from '@/components/common/CancelJobModal';
+import { useCaseManagement } from '@/hooks/useCaseManagement';
+import { useWitnessManagement } from '@/hooks/useWitnessManagement';
+import { useAttorneyManagement } from '@/hooks/useAttorneyManagement';
+import { useBillingManagement } from '@/hooks/useBillingManagement';
+import { useEquipmentManagement } from '@/hooks/useEquipmentManagement';
+import { useSessionManagement } from '@/hooks/useSessionManagement';
+
 export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const params = useParams();
     const router = useRouter();
     const [expandedStep, setExpandedStep] = useState(1);
     const [completedSteps, setCompletedSteps] = useState([]);
-    const [formData, setFormData] = useState({ caseName: '', caseNumber: '' });
-    const [isCaseEdited, setIsCaseEdited] = useState(false);
-    const lastSavedRef = useRef({ caseName: '', caseNumber: '' });
-    const [editingCase, setEditingCase] = useState(false);
-    const [pendingCaseChanges, setPendingCaseChanges] = useState(null);
-    const [witnesses, setWitnesses] = useState([]);
-    const [addingWitness, setAddingWitness] = useState(false);
-    const [newWitnessName, setNewWitnessName] = useState('');
-    const [expandedWitness, setExpandedWitness] = useState(null);
-    const [witnessRecords, setWitnessRecords] = useState({});
-    const [witnessTemplates, setWitnessTemplates] = useState({});
-    const [deletedWitnessVideoIds, setDeletedWitnessVideoIds] = useState({}); // witnessId -> number[]
-    const [attorneySections, setAttorneySections] = useState([
-        createAttorneySection('Taking Attorney')
-    ]);
-    const [expandedAttorney, setExpandedAttorney] = useState(null);
-    const [editingAttorney, setEditingAttorney] = useState(null);
     const searchParams = useSearchParams();
     const selectedJobId = searchParams.get('jobId');
     const toast = useToast();
+    
+    // Use custom hook for case management (must be after toast initialization)
+    const {
+        formData,
+        isCaseEdited,
+        editingCase,
+        pendingCaseChanges,
+        handleEditCase,
+        handleSaveCase,
+        handleCancelCase
+    } = useCaseManagement(caseId, caseInfo, toast);
+    
+    // Use custom hook for witness management (must be after toast initialization)
+    const {
+        witnesses,
+        addingWitness,
+        newWitnessName,
+        expandedWitness,
+        witnessRecords,
+        witnessTemplates,
+        deletedWitnessVideoIds,
+        setAddingWitness,
+        setNewWitnessName,
+        setExpandedWitness,
+        handleAddWitness,
+        handleRenameWitness,
+        handleDeleteWitness,
+        handleAddRecord,
+        handleUpdateRecord,
+        handleUploadVideo,
+        handleDeleteRecord,
+        handleUpdateTemplate,
+        handleSaveWitness
+    } = useWitnessManagement(witnessesData, toast);
+    
+    // Use custom hook for attorney management (must be after toast initialization)
+    const {
+        attorneySections,
+        expandedAttorney,
+        editingAttorney,
+        setExpandedAttorney,
+        setEditingAttorney,
+        handleAddAttorneySection,
+        handleRemoveAttorneySection,
+        handleAttorneyFieldChange,
+        handleAttorneyUpload,
+        handleRemoveAttorneyDocument,
+        handleSaveAttorney,
+        handleCancelAttorney
+    } = useAttorneyManagement(toast);
     const [jobData, setJobData] = useState(null);
     const [task, setTask] = useState(null);
-    const [sessionStarted, setSessionStarted] = useState(false);
-    const [sessionStartTime, setSessionStartTime] = useState(null);
-    const [sessionDuration, setSessionDuration] = useState('00:00:00');
-    const [showEndSessionModal, setShowEndSessionModal] = useState(false);
-    const lastFetchedJobRef = useRef(null);
     const [isUpcomingTask, setIsUpcomingTask] = useState(false); // Track if task is from upcoming tasks
+    
+    // Use custom hook for session management (must be after toast and isUpcomingTask initialization)
+    const {
+        sessionStarted,
+        sessionStartTime,
+        sessionDuration,
+        showEndSessionModal,
+        setShowEndSessionModal,
+        handleStartSession,
+        handleConfirmEndSession,
+        fetchSessionStatus
+    } = useSessionManagement(toast, isUpcomingTask, (status) => {
+        // Callback to update task status when session status changes
+        // Only update if status is different to prevent infinite loops
+        setTask(prev => {
+            if (!prev) return null;
+            if (prev.status === status) return prev;
+            return { ...prev, status };
+        });
+    });
     const [showMenu, setShowMenu] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const menuRef = useRef(null);
-    // seed witnesses from page data
-    useEffect(() => {
-        if (!Array.isArray(witnessesData)) return;
-        const mapped = witnessesData
-            .map((w) => ({
-                id: w.id ?? w.witness_id ?? w.uuid ?? Date.now() + Math.random(),
-                name: w.name ?? w.witness_name ?? w.full_name ?? 'Unnamed Witness',
-            }))
-            .filter((w) => w.id != null);
-        setWitnesses(mapped);
-        setWitnessRecords((prev) => {
-            const next = { ...prev };
-            for (const raw of witnessesData) {
-                const wid = raw.id ?? raw.witness_id ?? raw.uuid;
-                if (wid == null) continue;
-                const vids = raw.witness_vid ?? raw.witness_videos ?? raw.videos ?? [];
-                if (Array.isArray(vids) && vids.length) {
-                    next[wid] = vids.map((v, idx) => {
-                        const start = (v.start_time ?? v.startTime ?? '').toString();
-                        const end = (v.end_time ?? v.endTime ?? '').toString();
-                        const startTime = start ? start.slice(0, 5) : '';
-                        const endTime = end ? end.slice(0, 5) : '';
-                        const fileName = v.file_name ?? v.fileName ?? null;
-                        const filePath = v.file_path ?? v.filePath ?? null;
-                        return {
-                            id: v.id ?? `vid-${wid}-${idx}`,
-                            backendId: v.id,
-                            startTime,
-                            endTime,
-                            video: fileName
-                                ? {
-                                      name: fileName,
-                                      filePath,
-                                      uploadedAt: v.created_at ?? v.createdAt ?? null,
-                                      size: v.file_size ?? v.fileSize ?? null,
-                                  }
-                                : null,
-                        };
-                    });
-                } else {
-                    // Ensure key exists for UI even when no videos yet
-                    if (!next[wid]) next[wid] = [];
-                }
-            }
-            // Also ensure mapped witnesses exist (in case raw list had missing ids)
-            for (const w of mapped) {
-                if (!next[w.id]) next[w.id] = [];
-            }
-            return next;
-        });
-        setWitnessTemplates((prev) => {
-            const next = { ...prev };
-            // Build a name->id map in case API items lack an id field
-            const byName = new Map(
-                mapped
-                    .filter((m) => m?.name)
-                    .map((m) => [(m.name || '').toLowerCase(), m.id])
-            );
-            for (const raw of witnessesData) {
-                let id = raw.id ?? raw.witness_id ?? raw.uuid;
-                if (id == null) {
-                    const rawName = (raw.witness_name ?? raw.name ?? '').toLowerCase();
-                    if (rawName) id = byName.get(rawName);
-                }
-                if (id == null) continue;
-                const existing = next[id] ?? {};
-                next[id] = {
-                    readOnText: raw.read_on_text ?? raw.readOnText ?? existing.readOnText ?? '',
-                    readOnTime: raw.read_on_time ?? raw.readOnTime ?? existing.readOnTime ?? '',
-                    readOffText: raw.read_off_text ?? raw.readOffText ?? existing.readOffText ?? '',
-                    readOffTime: raw.read_off_time ?? raw.readOffTime ?? existing.readOffTime ?? '',
-                };
-            }
-            return next;
-        });
-    }, [witnessesData]);
 
-    // Fetch attorneys from backend when jobId is available
-    useEffect(() => {
-        const fetchAttorneys = async () => {
-            if (!selectedJobId) return;
-            
-            try {
-                const attorneysData = await attorneysAPI.getJobAttorneys(selectedJobId);
-                
-                if (Array.isArray(attorneysData) && attorneysData.length > 0) {
-                    // Map backend response to frontend format (reusing same logic as handleAddAttorneySection)
-                    const mappedSections = attorneysData.map((attorney, index) => {
-                        // Use same title logic: first is "Taking Attorney", rest are numbered
-                        const title = index === 0 ? 'Taking Attorney' : `Attorney ${index}`;
-                        
-                        // Map document if file exists
-                        const documents = attorney.file_name ? [{
-                            id: `doc-${attorney.id}-${Date.now()}`,
-                            name: attorney.file_name,
-                            size: 0, // Backend doesn't provide size
-                            type: attorney.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                            uploadedAt: new Date().toISOString(),
-                            backendId: attorney.id,
-                            filePath: attorney.file_name_path
-                        }] : [];
-                        
-                        return {
-                            id: `attorney-${attorney.id}`, // Use backend ID for consistency
-                            backendId: attorney.id,
-                            title: title,
-                            fields: {
-                                attorneyName: attorney.attorney_name || '',
-                                firmName: attorney.firm_name || '',
-                                notes: attorney.notes || '',
-                                orderDetails: attorney.order_details || ''
-                            },
-                            documents: documents
-                        };
-                    });
-                    
-                    setAttorneySections(mappedSections);
-                } else {
-                    // No attorneys found, keep default "Taking Attorney"
-                    setAttorneySections([createAttorneySection('Taking Attorney')]);
-                }
-            } catch (err) {
-                // On error, keep default "Taking Attorney"
-                setAttorneySections([createAttorneySection('Taking Attorney')]);
-            }
-        };
-        
-        fetchAttorneys();
-    }, [selectedJobId]);
-
-    // sync when caseInfo arrives
-    useEffect(() => {
-        if (!caseInfo) return;
-        const next = {
-        caseName: caseInfo.case_short_name ?? '',
-        caseNumber: caseInfo.case_number ?? ''
-        };
-        setFormData(next);
-        lastSavedRef.current = next;
-        setIsCaseEdited(false);
-    }, [caseInfo]);
-  
-    const handleEditCase = () => {
-        // Prevent editing for upcoming tasks
+    // Case management is now handled by useCaseManagement hook
+    // Wrapper to prevent editing for upcoming tasks
+    const handleEditCaseWrapper = () => {
         if (isUpcomingTask) {
             return;
         }
-        setEditingCase(true);
-        // Store current state as pending changes for cancel
-        setPendingCaseChanges({ ...formData });
+        handleEditCase();
     };
 
-    const handleSaveCase = async (localFormData) => {
-        if (!caseId) return;
-        
-        // Validation: Check if case name and case number are not empty
-        // Use localFormData if it exists (even if empty string), otherwise fall back to formData
-        // Important: Empty string is a valid value that should be used, not fallback to formData
-        const caseNameRaw = localFormData?.hasOwnProperty('caseName')
-            ? localFormData.caseName 
-            : (formData?.caseName ?? '');
-        const caseNumberRaw = localFormData?.hasOwnProperty('caseNumber')
-            ? localFormData.caseNumber 
-            : (formData?.caseNumber ?? '');
-        
-        // Convert to string and trim
-        const caseName = String(caseNameRaw).trim();
-        const caseNumber = String(caseNumberRaw).trim();
-
-        // Collect all validation errors
-        const errors = [];
-        if (!caseName) {
-            errors.push('Case Name is required');
-        }
-        if (!caseNumber) {
-            errors.push('Case Number is required');
-        }
-
-        // Show all validation errors
-        if (errors.length > 0) {
-            errors.forEach(error => toast.error(error));
-            return;
-        }
-        
-        const payload = {
-            case_short_name: caseName,
-            case_number: caseNumber
-        };
-
-        try {
-            await casesAPI.editCase(caseId, payload);
-            // Update formData with saved values
-            setFormData({
-                caseName: caseName,
-                caseNumber: caseNumber
-            });
-            lastSavedRef.current = {
-                caseName: caseName,
-                caseNumber: caseNumber
-            };
-            setEditingCase(false);
-            setPendingCaseChanges(null);
-            setIsCaseEdited(false);
-            toast.success('Case details updated successfully');
-        } catch (err) {
-            toast.error('Failed to update case details');
-        }
-    };
-
-    const handleCancelCase = () => {
-        if (pendingCaseChanges) {
-            // Restore original values
-            setFormData(pendingCaseChanges);
-        }
-        setEditingCase(false);
-        setPendingCaseChanges(null);
-    };
-
-
-    const [billingInfo, setBillingInfo] = useState({
-        cancelEnRoute: false,
-        cancelSetup: false,
-        notes: '',
-        videographerHours: '',
-        fileLengthHours: '',
-        documents: []
+    // Use custom hook for billing management (must be after toast and isUpcomingTask initialization)
+    const {
+        billingInfo,
+        editingBilling,
+        pendingBillingChanges,
+        billingHasBeenSaved,
+        billingId,
+        handleBillingToggle,
+        handleBillingInputChange,
+        handleBillingUpload,
+        handleBillingDocumentRemove,
+        handleEditBilling,
+        handleSaveBilling,
+        handleCancelBilling,
+        handleDeleteBilling,
+        fetchBillingData
+    } = useBillingManagement(toast, isUpcomingTask, () => {
+        // Callback to collapse billing section when canceling new billing
+        setExpandedStep(expandedStep === 4 ? null : expandedStep);
     });
-    const [editingBilling, setEditingBilling] = useState(false);
-    const [pendingBillingChanges, setPendingBillingChanges] = useState(null);
-    const [billingHasBeenSaved, setBillingHasBeenSaved] = useState(false);
-    const [billingId, setBillingId] = useState(null);
-
-    const [equipmentInfo, setEquipmentInfo] = useState({
-        laptopUsed: false,
-        pipUsed: false,
-        exhibitTech: false,
-        parkingCost: '',
-        timeAfterFive: '',
-        documents: []
+    
+    // Use custom hook for equipment management (must be after toast and isUpcomingTask initialization)
+    const {
+        equipmentInfo,
+        editingEquipment,
+        pendingEquipmentChanges,
+        equipmentHasBeenSaved,
+        equipmentTimeId,
+        handleEquipmentCheckbox,
+        handleEquipmentInputChange,
+        handleEquipmentUpload,
+        handleEquipmentDocumentRemove,
+        handleEditEquipment,
+        handleSaveEquipment,
+        handleCancelEquipment,
+        handleDeleteEquipment,
+        fetchEquipmentData,
+        enableEditModeForNewEquipment
+    } = useEquipmentManagement(toast, isUpcomingTask, () => {
+        // Callback to collapse equipment section when canceling new equipment
+        setExpandedStep(expandedStep === 5 ? null : expandedStep);
     });
-    const [editingEquipment, setEditingEquipment] = useState(false);
-    const [pendingEquipmentChanges, setPendingEquipmentChanges] = useState(null);
-    const [equipmentHasBeenSaved, setEquipmentHasBeenSaved] = useState(false);
-    const [equipmentTimeId, setEquipmentTimeId] = useState(null);
 
     // Presentational components are implemented in `src/components/task/` to keep the page file focused on state and layout.
 
-    const createDocumentMeta = (file) => {
-        if (!file) return null;
-        return {
-            id: `${file.name}-${Date.now()}`,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            uploadedAt: new Date().toISOString()
-        };
+    // Map step numbers to backend types and field names
+    const stepTypeMap = {
+        1: { type: 'case', field: 'mark_is_done_case' },
+        2: { type: 'witnesses', field: 'mark_is_done_witnesses' },
+        3: { type: 'attorneys', field: 'mark_is_done_attorneys' },
+        4: { type: 'billings', field: 'mark_is_done_billings' },
+        5: { type: 'equipment_time', field: 'mark_is_done_equipment_time' }
     };
 
-    const handleAttorneyFieldChange = (sectionId, field, value) => {
-        setAttorneySections((prev) =>
-            prev.map((section) =>
-                section.id === sectionId
-                    ? { ...section, fields: { ...section.fields, [field]: value } }
-                    : section
-            )
-        );
-    };
-
-    const handleAttorneyUpload = (sectionId, file) => {
-        if (!file) return;
-        const section = attorneySections.find(s => s.id === sectionId);
-        if (!section) return;
-
-        // Store File object locally - will be sent with update/create API call
-        const newDoc = {
-            id: `${sectionId}-${Date.now()}`,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            uploadedAt: new Date().toISOString(),
-            file: file // Store File object to send with create/update API call
-        };
-        setAttorneySections((prev) =>
-            prev.map((s) =>
-                s.id === sectionId
-                    ? { ...s, documents: [newDoc] } // Replace existing document (only one document allowed)
-                    : s
-            )
-        );
-    };
-
-    const handleRemoveAttorneyDocument = (sectionId, documentId) => {
-        // Remove from local state - will be handled by update API call
-        setAttorneySections((prev) =>
-            prev.map((s) =>
-                s.id === sectionId
-                    ? {
-                          ...s,
-                          documents: s.documents.filter((doc) => doc.id !== documentId)
-                      }
-                    : s
-            )
-        );
-    };
-
-    const handleAddAttorneySection = () => {
-        const hasCopy = attorneySections.some((section) => section.title === 'Copy of Attorney');
-        const numberedCount = attorneySections.filter((section) => /^Attorney\s\d+$/i.test(section.title)).length;
-        const title = hasCopy ? `Attorney ${numberedCount + 1}` : 'Copy of Attorney';
-        const newSection = createAttorneySection(title);
-        
-        setAttorneySections((prev) => [...prev, newSection]);
-        // Auto-expand and enable editing for new section
-        setExpandedAttorney(newSection.id);
-        setEditingAttorney(newSection.id);
-    };
-
-    const handleRemoveAttorneySection = async (sectionId) => {
-        const section = attorneySections.find(s => s.id === sectionId);
-        
-        try {
-            // If attorney has backend ID, delete via API
-            if (section?.backendId && selectedJobId) {
-                await attorneysAPI.deleteAttorney(section.backendId);
-                toast.success('Attorney deleted successfully');
-            }
-            
-            // Remove from local state
-            setAttorneySections((prev) => {
-                const updated = prev.filter((s) => s.id !== sectionId);
-                // If all attorneys are deleted, ensure at least one empty form remains
-                if (updated.length === 0) {
-                    return [createAttorneySection('Taking Attorney')];
-                }
-                return updated;
-            });
-            if (expandedAttorney === sectionId) {
-                setExpandedAttorney(null);
-            }
-            if (editingAttorney === sectionId) {
-                setEditingAttorney(null);
-            }
-        } catch (err) {
-            console.error('Failed to delete attorney:', err);
-            toast.error('Failed to delete attorney');
-        }
-    };
-
-    const handleSaveAttorney = async (sectionId) => {
-        const section = attorneySections.find(s => s.id === sectionId);
-        if (!section || !selectedJobId) {
-            setEditingAttorney(null);
+    // Function to sync mark_is_done status from backend
+    const syncMarkIsDoneStatus = useCallback(async (jobNo) => {
+        if (!jobNo || Number.isNaN(Number(jobNo)) || !caseId) {
+            console.log('Skipping sync: missing jobNo or caseId', { jobNo, caseId });
             return;
         }
-
-        const attorneyData = {
-            attorneyName: section.fields.attorneyName,
-            firmName: section.fields.firmName,
-            notes: section.fields.notes,
-            orderDetails: section.fields.orderDetails,
-        };
-
-        // Get the first document file if it exists (for both create and update)
-        const documentFile = section.documents.find(doc => doc.file)?.file || null;
         
-        // Check if document was removed:
-        // - If section has backendId (existing attorney) 
-        // - AND documents array is empty (user removed it)
-        // - AND no new file uploaded
-        // Then we need to explicitly send empty document field to remove it
-        // Note: We can't perfectly detect if there was originally a document, but if it's an existing
-        // attorney with empty documents and no new file, we'll send empty field - backend will handle it correctly
-        const isExistingAttorney = !!section.backendId;
-        const hasNewFile = !!documentFile;
-        const documentsNowEmpty = section.documents.length === 0;
-        // If it's an existing attorney with no documents now and no new file, assume document was removed
-        const shouldRemoveDocument = isExistingAttorney && documentsNowEmpty && !hasNewFile;
-
         try {
-            if (section.backendId) {
-                // Update existing attorney with file in single API call
-                const response = await attorneysAPI.updateAttorney(section.backendId, attorneyData, documentFile, shouldRemoveDocument);
-                
-                // Use backend response to update local state (includes updated document info)
-                const updatedAttorney = response?.result || response;
-                
-                // Map document from backend response - if file_name is null, documents array is empty
-                const updatedDocuments = updatedAttorney?.file_name ? [{
-                    id: `doc-${updatedAttorney.id}-${Date.now()}`,
-                    name: updatedAttorney.file_name,
-                    size: 0,
-                    type: updatedAttorney.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                    uploadedAt: new Date().toISOString(),
-                    backendId: updatedAttorney.id,
-                    filePath: updatedAttorney.file_name_path
-                }] : []; // Empty array if no document
-                
-                setAttorneySections((prev) =>
-                    prev.map((s) => {
-                        if (s.id === sectionId) {
-                            return {
-                                ...s,
-                                backendId: updatedAttorney.id || s.backendId,
-                                fields: {
-                                    attorneyName: updatedAttorney.attorney_name || s.fields.attorneyName,
-                                    firmName: updatedAttorney.firm_name || s.fields.firmName,
-                                    notes: updatedAttorney.notes || s.fields.notes,
-                                    orderDetails: updatedAttorney.order_details || s.fields.orderDetails,
-                                },
-                                documents: updatedDocuments // Use backend response data - will be empty if document was removed
-                            };
+            console.log(`Syncing mark_is_done status for caseId: ${caseId}, jobNo: ${jobNo}`);
+            const response = await casesAPI.getJobMarkIsDoneDetails(Number(jobNo), Number(caseId));
+            
+            // Extract result from response if it exists
+            const jobDetails = response?.result || response;
+            
+            if (jobDetails) {
+                console.log('Job details received:', jobDetails);
+                // Dynamically build completedSteps array based on backend values
+                const completedStepsFromBackend = Object.keys(stepTypeMap)
+                    .map(stepNum => {
+                        const stepInfo = stepTypeMap[Number(stepNum)];
+                        // Check if the field exists and is true
+                        const isDone = jobDetails[stepInfo.field] === true;
+                        if (isDone) {
+                            console.log(`Step ${stepNum} (${stepInfo.type}) is marked as done`);
                         }
-                        return s;
+                        return isDone ? Number(stepNum) : null;
                     })
-                );
-                toast.success('Attorney updated successfully');
+                    .filter(stepNum => stepNum !== null);
+                
+                console.log('Completed steps from backend:', completedStepsFromBackend);
+                setCompletedSteps(completedStepsFromBackend);
             } else {
-                // Create new attorney with file in single API call
-                const response = await attorneysAPI.createJobAttorney(selectedJobId, attorneyData, documentFile);
-                setAttorneySections((prev) =>
-                    prev.map((s) => {
-                        if (s.id === sectionId) {
-                            // Remove file objects from documents after successful save (file is now on backend)
-                            const cleanedDocuments = s.documents.map(doc => {
-                                const { file, ...docWithoutFile } = doc;
-                                return docWithoutFile;
-                            });
-                            return {
-                                ...s,
-                                backendId: response.id || response.attorney_id,
-                                documents: cleanedDocuments
-                            };
-                        }
-                        return s;
-                    })
-                );
-                toast.success('Attorney created successfully');
-            }
-            setEditingAttorney(null);
-        } catch (err) {
-            console.error('Failed to save attorney:', err);
-            toast.error('Failed to save attorney');
-        }
-    };
-
-    const handleCancelAttorney = (sectionId) => {
-        // Cancel editing - just close edit mode
-        setEditingAttorney(null);
-    };
-
-    const handleBillingToggle = (field) => {
-        if (!editingBilling) return;
-        setBillingInfo((prev) => ({ ...prev, [field]: !prev[field] }));
-    };
-
-    const handleBillingInputChange = (field, value) => {
-        if (!editingBilling) return;
-        setBillingInfo((prev) => ({ ...prev, [field]: value }));
-    };
-
-    const handleBillingUpload = (file) => {
-        if (!editingBilling) return;
-        const meta = createDocumentMeta(file);
-        if (!meta) return;
-        // Keep File object so we can send it to backend when saving billing
-        const document = { ...meta, file };
-        setBillingInfo((prev) => ({ ...prev, documents: [...prev.documents, document] }));
-    };
-
-    const handleBillingDocumentRemove = (documentId) => {
-        if (!editingBilling) return;
-        setBillingInfo((prev) => ({
-            ...prev,
-            documents: prev.documents.filter((doc) => doc.id !== documentId)
-        }));
-    };
-
-    const handleEditBilling = () => {
-        // Prevent editing for upcoming tasks
-        if (isUpcomingTask) {
-            return;
-        }
-        setEditingBilling(true);
-        // Store current state as pending changes for cancel (deep copy documents array)
-        setPendingBillingChanges({
-            ...billingInfo,
-            documents: billingInfo.documents.map(doc => ({ ...doc }))
-        });
-    };
-
-    const handleSaveBilling = async () => {
-        const parseHours = (raw) => {
-            if (!raw) return null;
-            const cleaned = String(raw).toLowerCase().replace(/hrs?/, '').trim();
-            if (!cleaned) return null;
-            const num = parseFloat(cleaned);
-            return Number.isNaN(num) ? null : num;
-        };
-
-        const rawVideographerHours = billingInfo.videographerHours?.trim();
-        const rawFileLengthHours = billingInfo.fileLengthHours?.trim();
-
-        const videographerValue = parseHours(rawVideographerHours);
-        const fileLengthValue = parseHours(rawFileLengthHours);
-
-        // Validate videographer hours
-        if (rawVideographerHours && (videographerValue === null || videographerValue < 0)) {
-            toast.error('Videographer hours must be a valid positive number (e.g. 4 or 4hrs)');
-            return;
-        }
-
-        if (rawFileLengthHours && (fileLengthValue === null || fileLengthValue < 0)) {
-            toast.error('File length hours must be a valid positive number (e.g. 8 or 8hrs)');
-            return;
-        }
-
-        // Normalise display to "Xhrs" format like Figma while keeping numeric value validated
-        const normalisedBilling = {
-            ...billingInfo,
-            videographerHours:
-                rawVideographerHours && videographerValue !== null ? `${videographerValue}hrs` : '',
-            fileLengthHours:
-                rawFileLengthHours && fileLengthValue !== null ? `${fileLengthValue}hrs` : '',
-        };
-
-        // Determine which documents were removed (compare with original)
-        const originalDocIds = new Set((pendingBillingChanges?.documents || []).map(doc => doc.id));
-        const currentDocIds = new Set((billingInfo.documents || []).map(doc => doc.id));
-        const documentsToRemove = Array.from(originalDocIds).filter(id => !currentDocIds.has(id));
-
-        // Add documentsToRemove to normalisedBilling for update API
-        if (billingId && documentsToRemove.length > 0) {
-            normalisedBilling.documentsToRemove = documentsToRemove;
-        }
-
-        // Persist billing to backend
-        try {
-            const jobIdParam = searchParams.get('jobId');
-            const jobNo = Number(jobIdParam ?? params?.id);
-            if (!jobNo || Number.isNaN(jobNo)) {
-                toast.error('Unable to determine job number for billing');
-                return;
-            }
-
-            let response;
-            if (billingId) {
-                // Update existing billing - only send changed fields
-                response = await billingAPI.updateBilling(billingId, normalisedBilling, pendingBillingChanges, jobNo);
-                toast.success('Billing information updated successfully');
-            } else {
-                // Create new billing
-                response = await billingAPI.createBilling(jobNo, normalisedBilling);
-                // Store billing ID from response
-                if (response?.result?.id) {
-                    setBillingId(response.result.id);
-                }
-                toast.success('Billing information saved successfully');
-            }
-
-            // Fetch updated billing data to get documents with backend IDs
-            try {
-                const updatedBillingData = await billingAPI.getJobBilling(jobNo);
-                
-                if (updatedBillingData) {
-                    // Map backend response to frontend format with documents
-                    setBillingInfo({
-                        cancelEnRoute: updatedBillingData.cancel_en_route ?? false,
-                        cancelSetup: updatedBillingData.cancel_setup ?? false,
-                        notes: updatedBillingData.billing_notes ?? '',
-                        videographerHours: updatedBillingData.videographer_hours_present ?? '',
-                        fileLengthHours: updatedBillingData.file_hours_length ?? '',
-                        documents: (updatedBillingData.documents || []).map((doc) => ({
-                            id: doc.id || `doc-${doc.id}-${Date.now()}`,
-                            name: doc.file_name || doc.name || 'Unknown',
-                            size: doc.size || 0,
-                            type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                            uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                            backendId: doc.id,
-                            filePath: doc.file_path
-                        }))
-                    });
-                    if (updatedBillingData.id) {
-                        setBillingId(updatedBillingData.id);
-                    }
-                } else {
-                    // Fallback: Update local state - remove file objects and documentsToRemove after successful save
-                    const cleanedBilling = {
-                        ...normalisedBilling,
-                        documents: normalisedBilling.documents
-                            .filter(doc => !documentsToRemove.includes(doc.id))
-                            .map(doc => {
-                                const { file, ...docWithoutFile } = doc;
-                                return docWithoutFile;
-                            })
-                    };
-                    delete cleanedBilling.documentsToRemove;
-                    setBillingInfo(cleanedBilling);
-                }
-            } catch (fetchErr) {
-                // If fetch fails, use fallback approach
-                console.warn('Failed to fetch updated billing data after save, using local state:', fetchErr);
-                const cleanedBilling = {
-                    ...normalisedBilling,
-                    documents: normalisedBilling.documents
-                        .filter(doc => !documentsToRemove.includes(doc.id))
-                        .map(doc => {
-                            const { file, ...docWithoutFile } = doc;
-                            return docWithoutFile;
-                        })
-                };
-                delete cleanedBilling.documentsToRemove;
-                setBillingInfo(cleanedBilling);
-            }
-
-            setEditingBilling(false);
-            setPendingBillingChanges(null);
-            setBillingHasBeenSaved(true);
-        } catch (err) {
-            console.error('Failed to save billing information:', err);
-            toast.error(billingId ? 'Failed to update billing information' : 'Failed to save billing information');
-        }
-    };
-
-    const handleCancelBilling = () => {
-        if (billingId && pendingBillingChanges) {
-            // For existing billing, restore original values and exit edit mode
-            setBillingInfo(pendingBillingChanges);
-            setEditingBilling(false);
-            setPendingBillingChanges(null);
-        } else {
-            // For new billing, reset to empty form and collapse the section
-            const emptyBilling = {
-                cancelEnRoute: false,
-                cancelSetup: false,
-                notes: '',
-                videographerHours: '',
-                fileLengthHours: '',
-                documents: []
-            };
-            setBillingInfo(emptyBilling);
-            setPendingBillingChanges(null);
-            setEditingBilling(false);
-            // Collapse the billing section (step 4)
-            setExpandedStep(expandedStep === 4 ? null : expandedStep);
-        }
-    };
-
-    const handleDeleteBilling = async () => {
-        try {
-            // If billing exists in backend, delete it
-            if (billingId) {
-                const response = await billingAPI.deleteBilling(billingId);
-                
-                // Check backend response
-                if (response?.success === false) {
-                    toast.error(response?.message || 'Failed to delete billing information');
-                    return;
-                }
-                
-                // Success response from backend
-                if (response?.success === true) {
-                    toast.success(response?.message || 'Billing information deleted successfully');
-                }
-            } else {
-                // No billing ID means it was never saved, just reset local state
-                toast.success('Billing information cleared');
-            }
-            
-            // Reset to empty billing form with Save/Cancel buttons
-            const emptyBilling = {
-                cancelEnRoute: false,
-                cancelSetup: false,
-                notes: '',
-                videographerHours: '',
-                fileLengthHours: '',
-                documents: []
-            };
-            setBillingInfo(emptyBilling);
-            setEditingBilling(true); // Show Save/Cancel buttons after delete
-            setPendingBillingChanges(emptyBilling);
-            setBillingHasBeenSaved(false);
-            setBillingId(null);
-        } catch (err) {
-            console.error('Failed to delete billing information:', err);
-            const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete billing information';
-            toast.error(errorMessage);
-        }
-    };
-
-    const handleEquipmentCheckbox = (field) => {
-        if (!editingEquipment) return;
-        setEquipmentInfo((prev) => ({ ...prev, [field]: !prev[field] }));
-    };
-
-    const handleEquipmentInputChange = (field, value) => {
-        if (!editingEquipment) return;
-        
-        // For parking cost, only allow numbers and decimal point
-        if (field === 'parkingCost') {
-            // Remove any non-numeric characters except decimal point
-            const numericValue = value.replace(/[^0-9.]/g, '');
-            // Ensure only one decimal point
-            const parts = numericValue.split('.');
-            const sanitizedValue = parts.length > 2 
-                ? parts[0] + '.' + parts.slice(1).join('') 
-                : numericValue;
-            setEquipmentInfo((prev) => ({ ...prev, [field]: sanitizedValue }));
-        } else {
-            setEquipmentInfo((prev) => ({ ...prev, [field]: value }));
-        }
-    };
-
-    const handleEquipmentUpload = (file) => {
-        if (!editingEquipment) return;
-        const document = createDocumentMeta(file);
-        if (!document) return;
-        // Add file object to document so it can be sent to backend
-        const documentWithFile = { ...document, file };
-        setEquipmentInfo((prev) => ({ ...prev, documents: [...prev.documents, documentWithFile] }));
-    };
-
-    const handleEquipmentDocumentRemove = (documentId) => {
-        if (!editingEquipment) return;
-        setEquipmentInfo((prev) => ({
-            ...prev,
-            documents: prev.documents.filter((doc) => doc.id !== documentId)
-        }));
-    };
-
-    const handleEditEquipment = () => {
-        // Prevent editing for upcoming tasks
-        if (isUpcomingTask) {
-            return;
-        }
-        setEditingEquipment(true);
-        // Store current state as pending changes for cancel
-        setPendingEquipmentChanges({
-            ...equipmentInfo,
-            documents: equipmentInfo.documents.map(doc => ({ ...doc }))
-        });
-    };
-
-    const handleSaveEquipment = async () => {
-        // Validate parking cost if provided
-        if (equipmentInfo.parkingCost && equipmentInfo.parkingCost.trim()) {
-            const parkingValue = parseFloat(equipmentInfo.parkingCost);
-            if (isNaN(parkingValue) || parkingValue < 0) {
-                toast.error('Parking cost must be a valid positive number');
-                return;
-            }
-        }
-
-        // Validate time after 5PM if provided
-        if (equipmentInfo.timeAfterFive && equipmentInfo.timeAfterFive.trim()) {
-            // Time format validation (HH:MM)
-            const timePattern = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-            if (!timePattern.test(equipmentInfo.timeAfterFive)) {
-                toast.error('Time After 5PM must be in valid format (HH:MM)');
-                return;
-            }
-        }
-
-        // Determine which documents were removed (compare with original)
-        // Use backendId for documents that came from backend, id for new documents
-        const originalDocIds = new Set((pendingEquipmentChanges?.documents || []).map(doc => doc.backendId || doc.id));
-        const currentDocIds = new Set((equipmentInfo.documents || []).map(doc => doc.backendId || doc.id));
-        const documentsToRemove = Array.from(originalDocIds)
-            .filter(id => !currentDocIds.has(id))
-            .filter(id => {
-                // Only include documents that have a backendId (were saved to backend)
-                // New documents without backendId don't need to be removed from backend
-                const originalDoc = (pendingEquipmentChanges?.documents || []).find(doc => (doc.backendId || doc.id) === id);
-                return originalDoc?.backendId != null;
-            })
-            .map(id => {
-                // Get the backendId for removal
-                const originalDoc = (pendingEquipmentChanges?.documents || []).find(doc => (doc.backendId || doc.id) === id);
-                return originalDoc?.backendId || id;
-            });
-
-        // Add documentsToRemove to equipmentInfo for update API
-        const equipmentData = { ...equipmentInfo };
-        if (equipmentTimeId && documentsToRemove.length > 0) {
-            equipmentData.documentsToRemove = documentsToRemove;
-        }
-
-        // Persist equipment time to backend
-        try {
-            const jobIdParam = searchParams.get('jobId');
-            const jobNo = Number(jobIdParam ?? params?.id);
-            if (!jobNo || Number.isNaN(jobNo)) {
-                toast.error('Unable to determine job number for equipment time');
-                return;
-            }
-
-            let response;
-            if (equipmentTimeId) {
-                // Update existing equipment time - only send changed fields
-                response = await equipmentTimeAPI.updateEquipmentTime(equipmentTimeId, equipmentData, pendingEquipmentChanges, jobNo);
-                toast.success('Equipment time updated successfully');
-            } else {
-                // Create new equipment time
-                response = await equipmentTimeAPI.createEquipmentTime(jobNo, equipmentData);
-                // Store equipment time ID from response
-                if (response?.result?.id) {
-                    setEquipmentTimeId(response.result.id);
-                }
-                toast.success('Equipment time saved successfully');
-            }
-
-            // Fetch updated equipment data to get documents with backend IDs
-            // Add a small delay to ensure backend has processed the documents
-            try {
-                // Wait a bit for backend to process documents
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                const updatedEquipmentData = await equipmentTimeAPI.getJobEquipmentTime(jobNo);
-                
-                if (updatedEquipmentData) {
-                    console.log('Fetched equipment data after save:', updatedEquipmentData);
-                    console.log('Documents from backend:', updatedEquipmentData.documents);
-                    
-                    // Map backend response to frontend format with documents
-                    const mappedDocuments = (updatedEquipmentData.documents || []).map((doc) => {
-                        // Use doc.id as the primary id, fallback to generated id if missing
-                        const docId = doc.id ? `doc-${doc.id}` : `doc-${Date.now()}-${Math.random()}`;
-                        const mappedDoc = {
-                            id: docId,
-                            name: doc.file_name || doc.name || 'Unknown',
-                            size: doc.size || 0,
-                            type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                            uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                            backendId: doc.id, // Store backend ID separately
-                            filePath: doc.file_path
-                        };
-                        console.log('Mapped document:', mappedDoc);
-                        return mappedDoc;
-                    });
-                    
-                    console.log('Mapped documents array:', mappedDocuments);
-                    
-                    setEquipmentInfo({
-                        laptopUsed: updatedEquipmentData.laptop_used ?? false,
-                        pipUsed: updatedEquipmentData.pip_used ?? false,
-                        exhibitTech: updatedEquipmentData.exhibit_tech ?? false,
-                        parkingCost: updatedEquipmentData.parking_cost ? String(updatedEquipmentData.parking_cost) : '',
-                        timeAfterFive: updatedEquipmentData.time_after ?? '',
-                        documents: mappedDocuments
-                    });
-                    if (updatedEquipmentData.id) {
-                        setEquipmentTimeId(updatedEquipmentData.id);
-                    }
-                } else {
-                    console.warn('No equipment data returned after save');
-                    // Fallback: Update local state - remove file objects and documentsToRemove after successful save
-                    const cleanedEquipment = {
-                        ...equipmentData,
-                        documents: equipmentData.documents
-                            .filter(doc => !documentsToRemove.includes(doc.id))
-                            .map(doc => {
-                                const { file, ...docWithoutFile } = doc;
-                                return docWithoutFile;
-                            })
-                    };
-                    delete cleanedEquipment.documentsToRemove;
-                    setEquipmentInfo(cleanedEquipment);
-                }
-            } catch (fetchErr) {
-                // If fetch fails, use fallback approach
-                console.warn('Failed to fetch updated equipment data after save, using local state:', fetchErr);
-                const cleanedEquipment = {
-                    ...equipmentData,
-                    documents: equipmentData.documents
-                        .filter(doc => !documentsToRemove.includes(doc.id))
-                        .map(doc => {
-                            const { file, ...docWithoutFile } = doc;
-                            return docWithoutFile;
-                        })
-                };
-                delete cleanedEquipment.documentsToRemove;
-                setEquipmentInfo(cleanedEquipment);
-            }
-
-            setEditingEquipment(false);
-            setPendingEquipmentChanges(null);
-            setEquipmentHasBeenSaved(true);
-        } catch (err) {
-            console.error('Failed to save equipment time:', err);
-            toast.error(equipmentTimeId ? 'Failed to update equipment time' : 'Failed to save equipment time');
-        }
-    };
-
-    const handleCancelEquipment = () => {
-        if (equipmentTimeId && pendingEquipmentChanges) {
-            // For existing equipment, restore original values and exit edit mode
-            setEquipmentInfo(pendingEquipmentChanges);
-            setEditingEquipment(false);
-            setPendingEquipmentChanges(null);
-        } else {
-            // For new equipment, reset to empty form and collapse the section
-            const emptyEquipment = {
-                laptopUsed: false,
-                pipUsed: false,
-                exhibitTech: false,
-                parkingCost: '',
-                timeAfterFive: '',
-                documents: []
-            };
-            setEquipmentInfo(emptyEquipment);
-            setPendingEquipmentChanges(null);
-            setEditingEquipment(false);
-            // Collapse the equipment section (step 5)
-            setExpandedStep(expandedStep === 5 ? null : expandedStep);
-        }
-    };
-
-    const handleDeleteEquipment = async () => {
-        try {
-            // If equipment time exists in backend, delete it
-            if (equipmentTimeId) {
-                const response = await equipmentTimeAPI.deleteEquipmentTime(equipmentTimeId);
-                
-                // Check backend response
-                if (response?.success === false) {
-                    toast.error(response?.message || 'Failed to delete equipment time');
-                    return;
-                }
-                
-                // Success response from backend
-                if (response?.success === true) {
-                    toast.success(response?.message || 'Equipment time deleted successfully');
-                }
-            } else {
-                // No equipment time ID means it was never saved, just reset local state
-                toast.success('Equipment time cleared');
-            }
-            
-            // Reset to empty equipment form with Save/Cancel buttons
-            const emptyEquipment = {
-                laptopUsed: false,
-                pipUsed: false,
-                exhibitTech: false,
-                parkingCost: '',
-                timeAfterFive: '',
-                documents: []
-            };
-            setEquipmentInfo(emptyEquipment);
-            setEditingEquipment(true); // Show Save/Cancel buttons after delete
-            setPendingEquipmentChanges(emptyEquipment);
-            setEquipmentHasBeenSaved(false);
-            setEquipmentTimeId(null);
-        } catch (err) {
-            console.error('Failed to delete equipment time:', err);
-            const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete equipment time';
-            toast.error(errorMessage);
-        }
-    };
-
-    const fetchEquipmentData = async () => {
-        if (!selectedJobId) return;
-        
-        try {
-            // Get equipment time by job_no (backend endpoint: GET /equipment-time/get/{job_no})
-            const equipmentData = await equipmentTimeAPI.getJobEquipmentTime(selectedJobId);
-            
-            if (equipmentData) {
-                // Map backend response to frontend format
-                // Backend returns: { id, job_no, laptop_used, pip_used, exhibit_tech, 
-                //                  parking_cost, time_after, documents: [...] }
-                setEquipmentInfo({
-                    laptopUsed: equipmentData.laptop_used ?? false,
-                    pipUsed: equipmentData.pip_used ?? false,
-                    exhibitTech: equipmentData.exhibit_tech ?? false,
-                    parkingCost: equipmentData.parking_cost ? String(equipmentData.parking_cost) : '',
-                    timeAfterFive: equipmentData.time_after ?? '',
-                    documents: (equipmentData.documents || []).map((doc) => ({
-                        id: doc.id || `doc-${doc.id}-${Date.now()}`,
-                        name: doc.file_name || doc.name || 'Unknown',
-                        size: doc.size || 0,
-                        type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                        uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                        backendId: doc.id,
-                        filePath: doc.file_path
-                    }))
-                });
-                setEquipmentTimeId(equipmentData.id);
-                setEquipmentHasBeenSaved(true);
-                setEditingEquipment(false); // Show Edit/Delete buttons when equipment exists
-            } else {
-                // No equipment data exists - show empty form with Save/Cancel buttons
-                setEquipmentInfo({
-                    laptopUsed: false,
-                    pipUsed: false,
-                    exhibitTech: false,
-                    parkingCost: '',
-                    timeAfterFive: '',
-                    documents: []
-                });
-                setEquipmentTimeId(null);
-                setEquipmentHasBeenSaved(false);
-                setEditingEquipment(true); // Show Save/Cancel buttons when no equipment exists
-                setPendingEquipmentChanges({
-                    laptopUsed: false,
-                    pipUsed: false,
-                    exhibitTech: false,
-                    parkingCost: '',
-                    timeAfterFive: '',
-                    documents: []
-                });
+                console.log('No job details returned, keeping current state');
             }
         } catch (err) {
-            // Only log actual errors (not 404s/500s, which are handled in the API)
-            // This catch block handles unexpected errors like network failures
-            if (err?.status !== 404 && err?.status !== 500) {
-                console.error('Unexpected error fetching equipment time data:', err);
-            }
-            // Show empty form with Save/Cancel buttons on error
-            setEquipmentInfo({
-                laptopUsed: false,
-                pipUsed: false,
-                exhibitTech: false,
-                parkingCost: '',
-                timeAfterFive: '',
-                documents: []
-            });
-            setEquipmentTimeId(null);
-            setEquipmentHasBeenSaved(false);
-            setEditingEquipment(true); // Show Save/Cancel buttons when no equipment exists
-            setPendingEquipmentChanges({
-                laptopUsed: false,
-                pipUsed: false,
-                exhibitTech: false,
-                parkingCost: '',
-                timeAfterFive: '',
-                documents: []
-            });
+            console.warn('Failed to sync mark_is_done status:', err);
+            // Don't throw - just log the error, UI will work without sync
         }
-    };
+    }, [caseId]);
 
     // Fetch job data to populate task info
     useEffect(() => {
@@ -1126,6 +250,12 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                 if (foundJob) {
                     setTask(foundJob);
                     setIsUpcomingTask(false); // It's a pending task
+                    
+                    // Sync mark_is_done status from backend
+                    const jobNo = Number(selectedJobId);
+                    if (jobNo && !Number.isNaN(jobNo)) {
+                        await syncMarkIsDoneStatus(jobNo);
+                    }
                     return;
                 }
 
@@ -1136,6 +266,12 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                 if (foundUpcomingJob) {
                     setTask(foundUpcomingJob);
                     setIsUpcomingTask(true); // It's an upcoming task - disable all sections
+                    
+                    // Sync mark_is_done status from backend
+                    const jobNo = Number(selectedJobId);
+                    if (jobNo && !Number.isNaN(jobNo)) {
+                        await syncMarkIsDoneStatus(jobNo);
+                    }
                     return;
                 }
 
@@ -1182,91 +318,6 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         { number: 5, title: 'Equipment & Time', done: false }
     ];
 
-    const fetchBillingData = async () => {
-        if (!selectedJobId) return;
-        
-        try {
-            // Get billing by job_no (backend endpoint: GET /billings/get/{job_no})
-            const billingData = await billingAPI.getJobBilling(selectedJobId);
-            
-            if (billingData && billingData.id) {
-                // Billing exists - map backend response to frontend format
-                // Backend returns: { id, job_no, cancel_en_route, cancel_setup, billing_notes, 
-                //                  videographer_hours_present, file_hours_length, documents: [...] }
-                setBillingInfo({
-                    cancelEnRoute: billingData.cancel_en_route ?? false,
-                    cancelSetup: billingData.cancel_setup ?? false,
-                    notes: billingData.billing_notes ?? '',
-                    videographerHours: billingData.videographer_hours_present ?? '',
-                    fileLengthHours: billingData.file_hours_length ?? '',
-                    documents: (billingData.documents || []).map((doc) => ({
-                        id: doc.id || `doc-${doc.id}-${Date.now()}`,
-                        name: doc.file_name || doc.name || 'Unknown',
-                        size: doc.size || 0,
-                        type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                        uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                        backendId: doc.id,
-                        filePath: doc.file_path
-                    }))
-                });
-                setBillingId(billingData.id);
-                setBillingHasBeenSaved(true);
-                setEditingBilling(false); // Show Edit/Delete buttons when billing exists
-            } else {
-                // No billing data exists - show empty form with Save/Cancel buttons
-                setBillingInfo({
-                    cancelEnRoute: false,
-                    cancelSetup: false,
-                    notes: '',
-                    videographerHours: '',
-                    fileLengthHours: '',
-                    documents: []
-                });
-                setBillingId(null);
-                setBillingHasBeenSaved(false);
-                setEditingBilling(true); // Show Save/Cancel buttons when no billing exists
-                setPendingBillingChanges({
-                    cancelEnRoute: false,
-                    cancelSetup: false,
-                    notes: '',
-                    videographerHours: '',
-                    fileLengthHours: '',
-                    documents: []
-                });
-            }
-        } catch (err) {
-            // Only log actual errors (not 404s, which are handled in the API)
-            // This catch block handles unexpected errors like network failures
-            console.error('Unexpected error fetching billing data:', err);
-            // Show empty form with Save/Cancel buttons on error
-            setBillingInfo({
-                cancelEnRoute: false,
-                cancelSetup: false,
-                notes: '',
-                videographerHours: '',
-                fileLengthHours: '',
-                documents: []
-            });
-            setBillingId(null);
-            setBillingHasBeenSaved(false);
-            setEditingBilling(true); // Show Save/Cancel buttons when no billing exists
-            setPendingBillingChanges({
-                cancelEnRoute: false,
-                cancelSetup: false,
-                notes: '',
-                videographerHours: '',
-                fileLengthHours: '',
-                documents: []
-            });
-        }
-    };
-
-    // Fetch billing data on initial load
-    useEffect(() => {
-        if (!selectedJobId) return;
-        fetchBillingData();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedJobId]);
 
     const toggleStep = (stepNumber) => {
         // Disable section toggling for upcoming tasks
@@ -1289,644 +340,84 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
             fetchBillingData();
         } else if (stepNumber === 4 && isExpanding && !selectedJobId && !billingId) {
             // If no jobId but section is opening, show empty form with Save/Cancel
-            setEditingBilling(true);
-            setPendingBillingChanges({
-                ...billingInfo,
-                documents: billingInfo.documents.map(doc => ({ ...doc }))
-            });
-        }
-        
-        // Auto-enable edit mode when Equipment section is first opened
-        if (stepNumber === 5 && isExpanding && !equipmentHasBeenSaved) {
-            setEditingEquipment(true);
-            setPendingEquipmentChanges({
-                ...equipmentInfo,
-                documents: equipmentInfo.documents.map(doc => ({ ...doc }))
-            });
+            // This is handled by the hook's fetchBillingData
+            fetchBillingData();
         }
         
         // Fetch equipment data when Equipment section is opened (if not already loaded)
+        // The hook's fetchEquipmentData will automatically set edit mode if no equipment exists
         if (stepNumber === 5 && isExpanding && selectedJobId && !equipmentTimeId && equipmentHasBeenSaved === false) {
             fetchEquipmentData();
+        } else if (stepNumber === 5 && isExpanding && !equipmentHasBeenSaved) {
+            // If no jobId or equipment not saved, enable edit mode for new equipment
+            enableEditModeForNewEquipment();
         }
     };
 
-    const toggleStepDone = (stepNumber) => {
+    // Validation functions map
+    const validationMap = {
+        1: () => ({ isValid: true, errors: [] }), // No validation for case section
+        2: () => validateWitnesses(witnesses, witnessRecords),
+        3: () => validateAttorneys(attorneySections),
+        4: () => validateBillings(billingInfo),
+        5: () => validateEquipmentTime(equipmentInfo)
+    };
+
+    const toggleStepDone = async (stepNumber) => {
         // Disable "Mark as Done" for upcoming tasks
         if (isUpcomingTask) {
             return;
         }
+
+        // Determine new status: true if marking as done, false if unmarking
+        const isCurrentlyDone = completedSteps.includes(stepNumber);
+        const newDoneStatus = !isCurrentlyDone;
+        const stepInfo = stepTypeMap[stepNumber];
+        const backendType = stepInfo?.type;
+
+        // Validate only when marking as done (not when unmarking)
+        if (newDoneStatus && validationMap[stepNumber]) {
+            const validation = validationMap[stepNumber]();
+            
+            if (!validation.isValid) {
+                validation.errors.forEach(error => toast.error(error));
+                return;
+            }
+        }
+
+        // Get job number from selectedJobId or params
+        const jobIdParam = searchParams.get('jobId');
+        const jobNo = Number(jobIdParam ?? params?.id);
         
-        // If marking step 3 (Attorney Orders) as done, validate all attorney forms first
-        if (stepNumber === 3 && !completedSteps.includes(stepNumber)) {
-            // Check if there are any attorneys
-            if (attorneySections.length === 0) {
-                toast.error('Please add at least one attorney before marking as done');
-                return;
-            }
-            
-            // Check if all attorney sections are complete
-            const isSectionValid = (section) => {
-                return (
-                    section.fields.attorneyName?.trim() &&
-                    section.fields.firmName?.trim() &&
-                    section.fields.notes?.trim() &&
-                    section.fields.orderDetails?.trim()
-                );
-            };
-            
-            const incompleteSections = attorneySections.filter(section => !isSectionValid(section));
-            
-            if (incompleteSections.length > 0) {
-                // Get display names for incomplete sections
-                const incompleteNames = incompleteSections.map(section => {
-                    return section.fields.attorneyName?.trim() || section.title;
-                });
-                
-                const message = incompleteSections.length === 1
-                    ? `Please complete "${incompleteNames[0]}" form before marking as done`
-                    : `Please complete all incomplete forms (${incompleteNames.join(', ')}) before marking as done`;
-                
-                toast.error(message);
-                return;
-            }
-        }
-        
-        if (completedSteps.includes(stepNumber)) {
-            setCompletedSteps(completedSteps.filter(s => s !== stepNumber));
-        } else {
-            setCompletedSteps([...completedSteps, stepNumber]);
-        }
-    };
-
-    const handleAddWitness = async () => {
-        const name = newWitnessName.trim();
-        if (!name) return;
-        try {
-            const jobIdParam = searchParams.get('jobId');
-            const jobId = Number(jobIdParam ?? params?.id);
-            const payload = { job_no: jobId, witness_name: name };
-            const created = await witnessesAPI.createJObWitness(payload);
-            const newId = created?.id ?? created?.witness_id ?? Date.now();
-            const newWitness = { id: newId, name: created?.name ?? created?.witness_name ?? name };
-            setWitnesses((prev) => [...prev, newWitness]);
-            setWitnessRecords((prev) => ({ ...prev, [newId]: prev[newId] ?? [] }));
-            
-            // Get default template from first existing witness or use API response
-            setWitnessTemplates((prev) => {
-                // First, try to get template from API response
-                const apiTemplate = {
-                    readOnText: created?.read_on_text ?? created?.readOnText,
-                    readOnTime: created?.read_on_time ?? created?.readOnTime,
-                    readOffText: created?.read_off_text ?? created?.readOffText,
-                    readOffTime: created?.read_off_time ?? created?.readOffTime,
-                };
-                
-                // If API has template data, use it
-                if (apiTemplate.readOnText || apiTemplate.readOffText) {
-                    return {
-                        ...prev,
-                        [newId]: {
-                            readOnText: apiTemplate.readOnText ?? '',
-                            readOnTime: apiTemplate.readOnTime ?? '',
-                            readOffText: apiTemplate.readOffText ?? '',
-                            readOffTime: apiTemplate.readOffTime ?? '',
-                        },
-                    };
-                }
-                
-                // Otherwise, use first existing witness's template as default
-                const existingTemplateKeys = Object.keys(prev);
-                if (existingTemplateKeys.length > 0) {
-                    const firstTemplate = prev[existingTemplateKeys[0]];
-                    if (firstTemplate && (firstTemplate.readOnText || firstTemplate.readOffText)) {
-                        return {
-                            ...prev,
-                            [newId]: {
-                                readOnText: firstTemplate.readOnText ?? '',
-                                readOnTime: firstTemplate.readOnTime ?? '',
-                                readOffText: firstTemplate.readOffText ?? '',
-                                readOffTime: firstTemplate.readOffTime ?? '',
-                            },
-                        };
-                    }
-                }
-                
-                // Fallback: use empty template (original behavior)
-                return {
-                    ...prev,
-                    [newId]: prev[newId] ?? {
-                        readOnText: '',
-                        readOnTime: '',
-                        readOffText: '',
-                        readOffTime: '',
-                    },
-                };
-            });
-            
-            setNewWitnessName('');
-            setAddingWitness(false);
-            setExpandedWitness(newId);
-        } catch (err) {
-            console.error('Failed to create witness:', err);
-            toast?.error?.(err?.message || 'Failed to create witness');
-        }
-    };
-
-    const handleRenameWitness = async (witnessId, newName) => {
-        const name = (newName ?? '').toString().trim();
-        if (!name) {
-            toast.error('Witness name cannot be empty');
-            return false;
-        }
-        try {
-            const res = await witnessesAPI.updateWitnessName(witnessId, name);
-            const updatedName = res?.witness_name ?? res?.name ?? name;
-            setWitnesses((prev) => prev.map((w) => (w.id === witnessId ? { ...w, name: updatedName } : w)));
-            toast.success('Witness name updated successfully');
-            return true;
-        } catch (err) {
-            console.error('Failed to update witness name:', err);
-            toast.error(err?.message || 'Failed to update witness name');
-            return false;
-        }
-    };
-
-    const handleDeleteWitness = async (witnessId) => {
-        try {
-            const res = await witnessesAPI.deleteWitness(witnessId);
-            toast.success(res?.message || 'Witness archived successfully');
-
-            setWitnesses((prev) => prev.filter((w) => w.id !== witnessId));
-            setWitnessRecords((prev) => {
-                const next = { ...prev };
-                delete next[witnessId];
-                return next;
-            });
-            setWitnessTemplates((prev) => {
-                const next = { ...prev };
-                delete next[witnessId];
-                return next;
-            });
-            setDeletedWitnessVideoIds((prev) => {
-                const next = { ...prev };
-                delete next[witnessId];
-                return next;
-            });
-            setExpandedWitness(null);
-        } catch (err) {
-            console.error('Failed to archive witness:', err);
-            toast.error(err?.message || 'Failed to archive witness');
-        }
-    };
-
-    const handleAddRecord = (witnessId) => {
-        const current = witnessRecords[witnessId] || [];
-        if (current.length >= 5) {
-            toast.error('You can add maximum 5 videos (no more than 5).');
-            return;
-        }
-        setWitnessRecords({
-            ...witnessRecords,
-            [witnessId]: [
-                ...current,
-                { id: Date.now(), startTime: '', endTime: '', video: null }
-            ]
-        });
-    };
-
-    const handleUpdateRecord = (witnessId, recordId, field, value) => {
-        setWitnessRecords((prev) => ({
-            ...prev,
-            [witnessId]: (prev[witnessId] || []).map((r) =>
-                r.id === recordId ? { ...r, [field]: value } : r
-            )
-        }));
-    };
-
-    const handleUploadVideo = async (witnessId, recordId, file) => {
-        // allow removing selected video
-        if (!file) {
-            // File trash should NOT remove the whole Part section.
-            // If this was an existing backend video, mark it for deletion,
-            // clear the backendId so it won't be "kept" in replace_videos mode,
-            // and clear the file so user can re-upload a replacement.
-            const record = (witnessRecords[witnessId] || []).find((r) => r.id === recordId);
-            const backendId = record?.backendId;
-            if (backendId) {
-                setDeletedWitnessVideoIds((prev) => ({
-                    ...prev,
-                    [witnessId]: Array.from(new Set([...(prev[witnessId] || []), backendId])),
-                }));
-                setWitnessRecords((prev) => ({
-                    ...prev,
-                    [witnessId]: (prev[witnessId] || []).map((r) =>
-                        r.id === recordId ? { ...r, backendId: undefined, videoId: undefined, video: null } : r
-                    ),
-                }));
-                return;
-            }
-            handleUpdateRecord(witnessId, recordId, 'video', null);
+        if (!jobNo || Number.isNaN(jobNo)) {
+            toast.error('Unable to determine job number');
             return;
         }
 
-        const fileName = (file.name || '').toLowerCase();
-        const mime = (file.type || '').toLowerCase();
-        const isMp4 = mime === 'video/mp4' || fileName.endsWith('.mp4');
-        const isMpeg = mime === 'video/mpeg' || fileName.endsWith('.mpeg') || fileName.endsWith('.mpg');
-        if (!isMp4 && !isMpeg) {
-            toast.error('Only MPEG or MP4 formats are allowed.');
-            return;
-        }
-
-        const baseVideo = {
-            file, // keep reference for /witnesses/save-all upload
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            uploadedAt: new Date().toISOString(),
-        };
-
-        // Set basic metadata immediately
-        handleUpdateRecord(witnessId, recordId, 'video', baseVideo);
-
-        // Try to read duration from the file (for the "00:12:21" pill)
-        try {
-            if (typeof window === 'undefined') return;
-            const url = URL.createObjectURL(file);
-            const videoEl = document.createElement('video');
-            videoEl.preload = 'metadata';
-            videoEl.onloadedmetadata = () => {
-                const seconds = Number.isFinite(videoEl.duration) ? videoEl.duration : null;
-                URL.revokeObjectURL(url);
-                if (seconds && seconds > 0) {
-                    handleUpdateRecord(witnessId, recordId, 'video', { ...baseVideo, durationSeconds: seconds });
-                }
-            };
-            videoEl.onerror = () => {
-                URL.revokeObjectURL(url);
-            };
-            videoEl.src = url;
-        } catch (e) {
-            // ignore duration extraction failures
-        }
-    };
-
-    const handleSaveWitness = async (witnessId, { template, records } = {}) => {
-        try {
-            const jobIdParam = searchParams.get('jobId');
-            const jobId = Number(jobIdParam ?? params?.id);
-            if (!jobId) {
-                toast.error('Unable to determine job number for witness save');
-                return;
-            }
-
-            const witness = witnesses.find((w) => w.id === witnessId);
-            const witnessName = witness?.name || '';
-
-            const files = [];
-            const videos = (records || [])
-                .map((r) => {
-                const item = {
-                    id: r?.backendId ?? r?.videoId ?? r?.id, // if backend id exists, use it; otherwise backend may treat as new
-                    start_time: r?.startTime ?? '',
-                    end_time: r?.endTime ?? '',
-                };
-
-                // Only include file_index if user selected a file
-                const f = r?.video?.file;
-                if (f) {
-                    item.file_index = files.length;
-                    files.push(f);
-                } else {
-                    delete item.file_index;
-                }
-
-                // If this is a purely frontend-generated id, don't send it as "id"
-                // (backend expects DB id for updates/deletes; omit to create new)
-                if (!r?.backendId && !r?.videoId) {
-                    delete item.id;
-                }
-                // For new videos, backend supports creating rows even without a file
-                // (file can be uploaded later), so keep the item as long as it has times.
-                const hasTimes = !!(String(item.start_time || '').trim() && String(item.end_time || '').trim());
-                const hasFileIndex = typeof item.file_index === 'number';
-                if (!item.id && !hasFileIndex && !hasTimes) return null;
-                return item;
-            })
-                .filter(Boolean);
-            const deletes = (deletedWitnessVideoIds[witnessId] || []).map((id) => ({
-                id,
-                delete: true,
-            }));
-
-            const payload = {
-                job_no: jobId,
-                witness_id: witnessId,
-                witness_name: witnessName,
-                read_on_text: template?.readOnText ?? '',
-                read_off_text: template?.readOffText ?? '',
-                read_on_time: template?.readOnTime ?? '',
-                read_off_time: template?.readOffTime ?? '',
-                // Backend "sync mode": archive any existing videos not present in this payload
-                // (supports empty list -> delete all)
-                replace_videos: true,
-                videos: [...deletes, ...videos],
-            };
-            console.log('witness save payload', payload);
-            console.log('witness save files', files);
-            const saved = await witnessesAPI.saveAllWitnessAndVideos({ payload, files });
-            
-            toast.success('Witness and videos saved successfully');
-            setDeletedWitnessVideoIds((prev) => {
-                const next = { ...prev };
-                delete next[witnessId];
-                return next;
-            });
-
-            // Keep local UI in sync with what backend returns (best-effort)
-            if (saved?.witness_name) {
-                setWitnesses((prev) => prev.map((w) => (w.id === witnessId ? { ...w, name: saved.witness_name } : w)));
-            }
-            setWitnessTemplates((prev) => ({
-                ...prev,
-                [witnessId]: {
-                    readOnText: saved?.read_on_text ?? prev?.[witnessId]?.readOnText ?? '',
-                    readOnTime: saved?.read_on_time ?? prev?.[witnessId]?.readOnTime ?? '',
-                    readOffText: saved?.read_off_text ?? prev?.[witnessId]?.readOffText ?? '',
-                    readOffTime: saved?.read_off_time ?? prev?.[witnessId]?.readOffTime ?? '',
-                },
-            }));
-
-            // Important: refresh witness videos from backend so newly-created videos get real IDs
-            // (prevents duplicate creates on subsequent saves).
+        // Call backend API to update done status
+        if (backendType) {
             try {
-                const list = await witnessesAPI.getJobWitnesses(jobId);
-                const raw = (Array.isArray(list) ? list : []).find((w) => (w.id ?? w.witness_id) === witnessId);
-                if (raw) {
-                    const vids = raw.witness_vid ?? raw.witness_videos ?? raw.videos ?? [];
-                    setWitnessRecords((prev) => {
-                        const next = { ...prev };
-                        next[witnessId] = Array.isArray(vids)
-                            ? vids.map((v, idx) => {
-                                  const start = (v.start_time ?? v.startTime ?? '').toString();
-                                  const end = (v.end_time ?? v.endTime ?? '').toString();
-                                  const startTime = start ? start.slice(0, 5) : '';
-                                  const endTime = end ? end.slice(0, 5) : '';
-                                  const fileName = v.file_name ?? v.fileName ?? null;
-                                  const filePath = v.file_path ?? v.filePath ?? null;
-                                  return {
-                                      id: v.id ?? `vid-${witnessId}-${idx}`,
-                                      backendId: v.id,
-                                      startTime,
-                                      endTime,
-                                      video: fileName
-                                          ? {
-                                                name: fileName,
-                                                filePath,
-                                                uploadedAt: v.created_at ?? v.createdAt ?? null,
-                                                size: v.file_size ?? v.fileSize ?? null,
-                                            }
-                                          : null,
-                                  };
-                              })
-                            : [];
-                        return next;
-                    });
-                }
-            } catch (e) {
-                // If refresh fails, keep local state; next page refresh will reconcile.
-                console.warn('Failed to refresh witness list after save:', e);
+                await casesAPI.markJobAsDone(jobNo, backendType, newDoneStatus);
+                toast.success(newDoneStatus 
+                    ? `${stepInfo.type} marked as done successfully` 
+                    : `${stepInfo.type} unmarked successfully`
+                );
+                
+                // Sync status from backend after successful update
+                await syncMarkIsDoneStatus(jobNo);
+            } catch (err) {
+                console.error(`Failed to update ${backendType} done status:`, err);
+                toast.error(err?.message || `Failed to update ${backendType} status`);
+                return; // Don't update local state if API call fails
             }
-        } catch (err) {
-            console.error('Failed to save witness/videos:', err);
-            toast.error(err?.message || 'Failed to save witness/videos');
-        }
-    };
-
-    const handleDeleteRecord = (witnessId, recordId) => {
-        // If record exists in DB, mark it for deletion in save-all payload
-        const record = (witnessRecords[witnessId] || []).find((r) => r.id === recordId);
-        const backendId = record?.backendId;
-        if (backendId) {
-            setDeletedWitnessVideoIds((prev) => ({
-                ...prev,
-                [witnessId]: Array.from(new Set([...(prev[witnessId] || []), backendId])),
-            }));
-        }
-        setWitnessRecords((prev) => ({
-            ...prev,
-            [witnessId]: (prev[witnessId] || []).filter((r) => r.id !== recordId),
-        }));
-    };
-
-    const handleUpdateTemplate = (witnessId, field, value) => {
-        setWitnessTemplates({
-            ...witnessTemplates,
-            [witnessId]: {
-                ...witnessTemplates[witnessId],
-                [field]: value
-            }
-        });
-    };
-
-    // Format duration as HH:MM:SS
-    const formatDuration = (startTime) => {
-        if (!startTime) return '00:00:00';
-        const now = new Date();
-        const start = new Date(startTime);
-        const diffMs = now - start;
-        
-        const hours = Math.floor(diffMs / (1000 * 60 * 60));
-        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-        
-        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    };
-
-    // Handle start session
-    const handleStartSession = async () => {
-        // Prevent session start/end for upcoming tasks
-        if (isUpcomingTask) {
-            return;
-        }
-        
-        if (sessionStarted) {
-            // Show confirmation modal
-            setShowEndSessionModal(true);
-            return;
-        }
-
-        const jobIdParam = searchParams.get('jobId');
-        const jobNo = Number(jobIdParam ?? params?.id ?? selectedJobId);
-        
-        if (!jobNo || Number.isNaN(jobNo)) {
-            toast.error('Unable to determine job number');
-            return;
-        }
-        
-        try {
-            const result = await sessionAPI.startSession(jobNo);
-            const startTime = result?.start_time || new Date().toISOString();
-            
-            setSessionStarted(true);
-            setSessionStartTime(startTime);
-            setSessionDuration('00:00:00');
-            
-            // Update task status
-            setTask(prev => prev ? { ...prev, status: 'session-started' } : null);
-            
-            toast.success('Session started successfully');
-        } catch (err) {
-            console.error('Failed to start session:', err);
-            toast.error(err?.message || 'Failed to start session');
-        }
-    };
-
-    // Handle confirm end session
-    const handleConfirmEndSession = async () => {
-        const jobIdParam = searchParams.get('jobId');
-        const jobNo = Number(jobIdParam ?? params?.id ?? selectedJobId);
-        
-        if (!jobNo || Number.isNaN(jobNo)) {
-            toast.error('Unable to determine job number');
-            setShowEndSessionModal(false);
-            return;
-        }
-
-        try {
-            // Call end session API
-            await sessionAPI.endSession(jobNo);
-            
-            // Update local state
-            setSessionStarted(false);
-            setSessionStartTime(null);
-            setSessionDuration('00:00:00');
-            setShowEndSessionModal(false);
-            
-            // Update task status to Completed
-            setTask(prev => prev ? { ...prev, status: 'Completed' } : null);
-            
-            toast.success('Session ended successfully');
-        } catch (err) {
-            console.error('Failed to end session:', err);
-            toast.error(err?.message || 'Failed to end session');
         }
     };
 
     // Check session status when task loads and fetch actual start time
     useEffect(() => {
-        const fetchSessionStatus = async () => {
-            if (!task) return;
-
-            const jobIdParam = searchParams.get('jobId');
-            const jobNo = Number(jobIdParam ?? params?.id ?? selectedJobId);
-            
-            if (!jobNo || Number.isNaN(jobNo)) {
-                return;
-            }
-
-            // Reset ref if job number changed (new job loaded)
-            if (lastFetchedJobRef.current !== null && lastFetchedJobRef.current !== jobNo) {
-                lastFetchedJobRef.current = null;
-            }
-            
-            // Prevent re-fetching if we've already fetched for this job
-            // But allow fetch if we don't have sessionStartTime yet (needed for timer)
-            if (lastFetchedJobRef.current === jobNo && sessionStartTime) {
-                return;
-            }
-
-            // Mark this job as fetched
-            lastFetchedJobRef.current = jobNo;
-
-            try {
-                const result = await sessionAPI.getSessionStartTime(jobNo);
-                console.log('getSessionStartTime result:', result);
-                
-                if (result && result.success === true) {
-                    const apiStatus = result.status;
-                    
-                    // Handle COMPLETED status - JobStatusEnum.COMPLETED = "Completed"
-                    if (apiStatus === 'Completed') {
-                        setSessionStarted(false);
-                        setSessionStartTime(null);
-                        setSessionDuration('00:00:00');
-                        // Only update task status if it's different to prevent infinite loop
-                        setTask(prev => prev && prev.status !== 'Completed' ? { ...prev, status: 'Completed' } : prev);
-                        return;
-                    }
-                    
-                    // Handle SESSION_IN_PROGRESS status - JobStatusEnum.SESSION_IN_PROGRESS = "Session Started"
-                    if (apiStatus === 'Session Started') {
-                        if (result.result && typeof result.result === 'string') {
-                            // result is ISO string of start time
-                            setSessionStarted(true);
-                            setSessionStartTime(result.result);
-                            setSessionDuration('00:00:00'); // Initialize timer
-                            // Only update task status if it's different to prevent infinite loop
-                            setTask(prev => prev && prev.status !== 'Session Started' ? { ...prev, status: 'Session Started' } : prev);
-                        } else {
-                            setSessionStarted(false);
-                            setSessionStartTime(null);
-                        }
-                        return;
-                    }
-                    
-                    // Handle SESSION_NOT_STARTED status - JobStatusEnum.SESSION_NOT_STARTED = "Session not started"
-                    if (apiStatus === 'Session not started') {
-                        setSessionStarted(false);
-                        setSessionStartTime(null);
-                        setSessionDuration('00:00:00');
-                        // Only update task status if it's different to prevent infinite loop
-                        setTask(prev => prev && prev.status !== 'Session not started' ? { ...prev, status: 'Session not started' } : prev);
-                        return;
-                    }
-                    
-                    // Handle SCHEDULED status - JobStatusEnum.SCHEDULED = "Scheduled"
-                    if (apiStatus === 'Scheduled') {
-                        setSessionStarted(false);
-                        setSessionStartTime(null);
-                        setSessionDuration('00:00:00');
-                        // Only update task status if it's different to prevent infinite loop
-                        setTask(prev => prev && prev.status !== 'Scheduled' ? { ...prev, status: 'Scheduled' } : prev);
-                        return;
-                    }
-                } else if (result && result.success === false) {
-                    // API returned error
-                    setSessionStarted(false);
-                    setSessionStartTime(null);
-                    setSessionDuration('00:00:00');
-                }
-            } catch (err) {
-                console.error('Failed to fetch session status:', err);
-                setSessionStarted(false);
-                setSessionStartTime(null);
-            }
-        };
-
-        fetchSessionStatus();
-        // Dependencies: selectedJobId (main trigger), task?.id (when task changes), 
-        // but NOT sessionStartTime to avoid re-fetch loops
-    }, [selectedJobId, task?.id, searchParams, params]);
-
-    // Timer effect - updates duration every second when session is active
-    useEffect(() => {
-        if (!sessionStarted || !sessionStartTime) {
-            setSessionDuration('00:00:00');
-            return;
-        }
-
-        // Update immediately
-        setSessionDuration(formatDuration(sessionStartTime));
-
-        // Update every second
-        const interval = setInterval(() => {
-            setSessionDuration(formatDuration(sessionStartTime));
-        }, 1000);
-
-        return () => clearInterval(interval);
-    }, [sessionStarted, sessionStartTime]);
+        fetchSessionStatus(task);
+        // Dependencies: selectedJobId (main trigger), task?.id (when task changes)
+    }, [selectedJobId, task?.id, searchParams, params, fetchSessionStatus]);
 
     const progress = Math.round((completedSteps.length / steps.length) * 100);
 
@@ -2218,7 +709,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                             <CaseDetails 
                                                 formData={formData} 
                                                 editingCase={editingCase}
-                                                handleEditCase={handleEditCase}
+                                                handleEditCase={handleEditCaseWrapper}
                                                 handleSaveCase={handleSaveCase}
                                                 handleCancelCase={handleCancelCase}
                                             />

@@ -1,17 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useImperativeHandle, forwardRef } from 'react';
 import { Edit3 } from 'lucide-react';
 
-export default function CaseDetails({ 
+const CaseDetails = forwardRef(({ 
     formData, 
     editingCase, 
     handleEditCase, 
     handleSaveCase, 
     handleCancelCase 
-}) {
+}, ref) => {
     const [localFormData, setLocalFormData] = useState({
         caseName: formData.caseName || '',
         caseNumber: formData.caseNumber || ''
     });
+
+    // Expose current values via ref
+    useImperativeHandle(ref, () => ({
+        getCurrentValues: () => localFormData
+    }));
 
     // Update local state when formData prop changes (e.g., after cancel)
     useEffect(() => {
@@ -97,4 +102,8 @@ export default function CaseDetails({
             )}
         </div>
     );
-}
+});
+
+CaseDetails.displayName = 'CaseDetails';
+
+export default CaseDetails;

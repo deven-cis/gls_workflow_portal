@@ -28,7 +28,6 @@ export const sessionAPI = {
     getSessionStartTime: async (jobNo) => {
         try {
             const response = await galloInstance(`/jobs/get/${jobNo}/session_start_time/`);
-            console.log('getSessionStartTime response:', response);
             // Return the full response object so caller can check success status
             return response;
         } catch (err) {

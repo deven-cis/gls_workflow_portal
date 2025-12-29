@@ -82,6 +82,25 @@ export const casesAPI = {
     return Array.isArray(response) ? response.map(mapJobToTask) : [];
   },
 
+  // Get job details with mark_is_done status
+  // Backend endpoint: GET /jobs/get/{job_no}
+  getJobMarkIsDoneDetails: async (jobNo,caseId ) => {
+    try {
+      const response = await galloInstance(`/jobs/get/${jobNo}/${caseId}`);
+      return response;
+    } catch (err) {
+      // Handle 404 as "no job found"
+      if (err?.status === 404 || 
+          err?.message?.includes('404') || 
+          err?.message?.includes('not found')) {
+        console.log(`No job found for job_no ${jobNo}`);
+        return null;
+      }
+      // Re-throw other errors
+      throw err;
+    }
+  },
+
   // Get upcoming tasks from backend
   getUpcomingTasks: async () => {
     const response = await galloInstance('/jobs/upcoming/');
@@ -163,5 +182,26 @@ export const casesAPI = {
       if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
       return res.json();
     });
+  },
+
+  // Mark job section as done/undone
+  markJobAsDone: async (jobNo, type, isDone) => {
+    try {
+      const response = await galloInstance(`/jobs/${jobNo}/mark_as_done/${type}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ is_done: isDone }),
+      });
+      
+      if (response && response.success) {
+        return response;
+      }
+      
+      return response;
+    } catch (err) {
+      const error = new Error(err.message || `Failed to update ${type} done status`);
+      error.status = err.status;
+      error.body = err.body;
+      throw error;
+    }
   },
 };
