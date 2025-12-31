@@ -7,14 +7,17 @@ let API_BASE_URL = GALLo_URL;
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
   const dateStr = jobDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  const time24 = job.start_time ? job.start_time.substring(0, 5) : '00:00';
-  const timeStr = formatTime12Hour(time24);
+  const start_time = job.start_time ? job.start_time.substring(0, 5) : '00:00';
+  const end_time = job.end_time ? job.end_time.substring(0, 5) : '00:00';
+  const startTimeStr = formatTime12Hour(start_time);
+  const endTimeStr = formatTime12Hour(end_time);
   
   return {
     id: job.job_no,
     jobId: `Job${job.job_no}`,
     date: dateStr,
-    time: timeStr,
+    startTime: startTimeStr,
+    endTime: endTimeStr,
     title: job.case?.case_short_name || `Job #${job.job_no}`,
     location: job.zoom_meeting_id ? 'Virtual - Zoom' : `${job.job_loc_name || ''}, ${job.job_loc_city || ''}`,
     status: job.computed_status,

@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
 import AvatarMenu from '@/components/layouts/AvatarMenu';
 import { historyAPI } from '@/services/history_apis';
@@ -11,11 +12,21 @@ import HistoryCard from '@/components/history_view/HistoryCard';
 
 
 export default function HistoryView() {
-    const [activeTab, setActiveTab] = useState('completed');
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    
+    // Get initial tab from URL, default to 'completed'
+    const tabFromUrl = searchParams.get('tab');
+    const initialTab = tabFromUrl === 'cancelled' ? 'cancelled' : 'completed';
+    
+    const [activeTab, setActiveTab] = useState(initialTab);
     const [activeView, setActiveView] = useState('History');
     const [showCalendar, setShowCalendar] = useState(false);
-    const [startDate, setStartDate] = useState(null); // No filter by default
-    const [endDate, setEndDate] = useState(null); // No filter by default
+    // Separate date ranges for each tab
+    const [completedStartDate, setCompletedStartDate] = useState(null);
+    const [completedEndDate, setCompletedEndDate] = useState(null);
+    const [cancelledStartDate, setCancelledStartDate] = useState(null);
+    const [cancelledEndDate, setCancelledEndDate] = useState(null);
     const [selectedJob, setSelectedJob] = useState(null);
     const [showModal, setShowModal] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
@@ -27,10 +38,6 @@ export default function HistoryView() {
     const calendarRef = useRef(null);
     const toast = useToast();
 
-    // Ensure default tab is always "Completed" when History view is opened
-    useEffect(() => {
-        setActiveTab('completed');
-    }, []);
 
     useEffect(() => {
         const handleClickOutside = (event) => {
@@ -48,13 +55,19 @@ export default function HistoryView() {
         };
     }, [showCalendar]);
 
+    // Get current date range based on active tab
+    const startDate = activeTab === 'completed' ? completedStartDate : cancelledStartDate;
+    const endDate = activeTab === 'completed' ? completedEndDate : cancelledEndDate;
+
     // Fetch jobs based on active tab and date range
     useEffect(() => {
         const fetchJobs = async () => {
             setLoading(true);
             try {
                 const type = activeTab === 'completed' ? 'Completed' : 'Cancelled';
-                const jobs = await historyAPI.getJobsByType(type, startDate, endDate);
+                const currentStartDate = activeTab === 'completed' ? completedStartDate : cancelledStartDate;
+                const currentEndDate = activeTab === 'completed' ? completedEndDate : cancelledEndDate;
+                const jobs = await historyAPI.getJobsByType(type, currentStartDate, currentEndDate);
                 
                 if (activeTab === 'cancelled') {
                     setCancelledJobs(jobs || []);
@@ -75,7 +88,7 @@ export default function HistoryView() {
         };
 
         fetchJobs();
-    }, [activeTab, startDate, endDate]);
+    }, [activeTab, completedStartDate, completedEndDate, cancelledStartDate, cancelledEndDate]);
 
     const handleViewChange = (view) => {
         setActiveView(view);
@@ -83,16 +96,35 @@ export default function HistoryView() {
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
+        // Update URL to persist tab selection
+        const params = new URLSearchParams(searchParams.toString());
+        if (tab === 'completed') {
+            params.delete('tab'); // Remove tab param for default (completed)
+        } else {
+            params.set('tab', tab);
+        }
+        router.replace(`?${params.toString()}`, { scroll: false });
     };
 
     const handleDateChange = (start, end) => {
         // If both dates are provided, set them. Otherwise reset to null (no filter)
-        if (start && end) {
-            setStartDate(start);
-            setEndDate(end);
+        // Apply to the currently active tab only
+        if (activeTab === 'completed') {
+            if (start && end) {
+                setCompletedStartDate(start);
+                setCompletedEndDate(end);
+            } else {
+                setCompletedStartDate(null);
+                setCompletedEndDate(null);
+            }
         } else {
-            setStartDate(null);
-            setEndDate(null);
+            if (start && end) {
+                setCancelledStartDate(start);
+                setCancelledEndDate(end);
+            } else {
+                setCancelledStartDate(null);
+                setCancelledEndDate(null);
+            }
         }
     };
 
@@ -240,7 +272,7 @@ export default function HistoryView() {
 
     const formatDateRange = () => {
         if (!startDate || !endDate) {
-            return 'Select Date Range';
+            return 'Date';
         }
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
         const startMonth = monthNames[startDate.getMonth()];

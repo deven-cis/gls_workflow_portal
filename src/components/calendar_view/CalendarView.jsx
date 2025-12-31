@@ -1,6 +1,6 @@
 "use client";
-import { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { ChevronLeft, ChevronRight, Clock, X, MapPin, Calendar as CalendarIcon, Lock } from 'lucide-react';
 import { calendarAPI } from '@/services/calendar_apis';
 
 // Constants
@@ -52,7 +52,7 @@ const isSameDate = (date1, date2) => {
 };
 
 // Reusable EventCard Component
-function EventCard({ event, formatTime, getTimeRemaining, variant = 'default' }) {
+function EventCard({ event, formatTime, getTimeRemaining, variant = 'default', onClick }) {
   const isPending = event.status === 'pending';
   const timeRemaining = event.deadline ? getTimeRemaining(event.deadline) : null;
   const isCompact = variant === 'compact';
@@ -60,11 +60,12 @@ function EventCard({ event, formatTime, getTimeRemaining, variant = 'default' })
   return (
     <div
       className={`rounded-md overflow-hidden ${isCompact ? 'mb-1' : 'mb-1'} cursor-pointer hover:opacity-90 transition-opacity`}
+      onClick={onClick}
     >
       {/* Blue header bar with time */}
       <div className="bg-blue-600 text-white px-2 py-1 flex items-center">
-        <div className="w-0.5 h-3 bg-white mr-2"></div>
-        <div className="text-xs font-semibold">
+        <div className="w-0.5 h-3 bg-white mr-2 flex-shrink-0"></div>
+        <div className="text-xs font-semibold truncate">
           {formatTime(event.startTime)} - {formatTime(event.endTime)}
         </div>
       </div>
@@ -325,6 +326,83 @@ export default function CalendarView({
     return slots;
   }, []);
 
+  // Popover state for event details
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDateEvents, setSelectedDateEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState(null); // Track which specific event was clicked
+  const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0 });
+  const [clickedElement, setClickedElement] = useState(null);
+
+  // Handle date/event click
+  // If a specific event is provided, show only that event. Otherwise show all events for the date.
+  const handleDateClick = (date, events, event, clickedEvent = null) => {
+    // Get the clicked element position
+    if (event && event.currentTarget) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      
+      // Position popover very close to the clicked element (minimal gap like Google Calendar)
+      // Position to the right with tiny gap (2px)
+      let left = rect.right + scrollLeft + 2;
+      let top = rect.top + scrollTop;
+      
+      // Adjust if too close to right edge - show on left side instead
+      if (left + 320 > window.innerWidth + scrollLeft) {
+        left = rect.left + scrollLeft - 322; // Show on left side with minimal gap
+      }
+      
+      // Adjust if too close to bottom edge - move up to keep in viewport
+      if (top + 350 > window.innerHeight + scrollTop) {
+        top = window.innerHeight + scrollTop - 350; // Keep within viewport
+      }
+      
+      // Ensure popover doesn't go off top of screen
+      if (top < scrollTop) {
+        top = scrollTop + 5;
+      }
+      
+      setPopoverPosition({ top, left });
+      setClickedElement(event.currentTarget);
+    }
+    
+    setSelectedDate(date);
+    // If a specific event was clicked, show only that event. Otherwise show all events.
+    if (clickedEvent) {
+      setSelectedDateEvents([clickedEvent]);
+      setSelectedEvent(clickedEvent);
+    } else {
+      setSelectedDateEvents(events || []);
+      setSelectedEvent(null);
+    }
+  };
+
+  // Close popover
+  const handleClosePopover = () => {
+    setSelectedDate(null);
+    setSelectedDateEvents([]);
+    setSelectedEvent(null);
+    setClickedElement(null);
+  };
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (selectedDate && clickedElement && !clickedElement.contains(e.target)) {
+        // Check if click is outside the popover
+        const popover = document.getElementById('event-popover');
+        if (popover && !popover.contains(e.target)) {
+          handleClosePopover();
+        }
+      }
+    };
+
+    if (selectedDate) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [selectedDate, clickedElement]);
+
   return (
     <div className="w-full">
       {/* Header Section */}
@@ -393,6 +471,7 @@ export default function CalendarView({
               formatTime={formatTime}
               getTimeRemaining={getTimeRemaining}
               dayNames={DAY_NAMES}
+              onDateClick={handleDateClick}
             />
           ) : (
             <MonthView 
@@ -402,16 +481,28 @@ export default function CalendarView({
               formatTime={formatTime}
               getTimeRemaining={getTimeRemaining}
               dayNames={DAY_NAMES}
+              onDateClick={handleDateClick}
             />
           )}
         </>
       )}
+
+      {/* Event Details Popover - Google Calendar style */}
+      <EventDetailsPopover
+        isOpen={selectedDate !== null}
+        onClose={handleClosePopover}
+        date={selectedDate}
+        events={selectedDateEvents}
+        formatTime={formatTime}
+        getTimeRemaining={getTimeRemaining}
+        position={popoverPosition}
+      />
     </div>
   );
 }
 
 // Week View Component
-function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeRemaining, dayNames }) {
+function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeRemaining, dayNames, onDateClick }) {
   const eventInSlot = (event, slot) => {
     if (slot === 'all-day') {
       // For 'all-day' slot, include events that span the entire day or have no specific time
@@ -459,16 +550,25 @@ function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeR
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="grid grid-cols-8 border-b border-gray-200 bg-white">
         <div className="border-r border-gray-200 p-2 bg-white"></div>
-        {weekDates.map((date, index) => (
-          <div key={index} className="p-3 text-center border-r border-gray-200 last:border-r-0 bg-white">
-            <div className="text-xs font-semibold text-gray-600 uppercase">
-              {dayNames[date.getDay()]}
+        {weekDates.map((date, index) => {
+          const dateEvents = getEventsForDate(date);
+          return (
+            <div key={index} className="p-3 text-center border-r border-gray-200 last:border-r-0 bg-white">
+              <div className="text-xs font-semibold text-gray-600 uppercase">
+                {dayNames[date.getDay()]}
+              </div>
+              <div 
+                className="text-sm font-semibold text-gray-900 mt-1 cursor-pointer hover:text-blue-600 transition-colors"
+                onClick={(e) => {
+                  // Clicking date number shows all events for that date
+                  onDateClick && onDateClick(date, dateEvents, e, null);
+                }}
+              >
+                {date.getDate()}
+              </div>
             </div>
-            <div className="text-sm font-semibold text-gray-900 mt-1">
-              {date.getDate()}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="divide-y divide-gray-200">
@@ -487,15 +587,26 @@ function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeR
                   className="border-r border-gray-200 last:border-r-0 p-1 relative bg-white min-h-[80px]"
                 >
                   {slotEvents.length > 0 ? (
-                    slotEvents.map((event) => (
-                      <EventCard
-                        key={event.id}
-                        event={event}
-                        formatTime={formatTime}
-                        getTimeRemaining={getTimeRemaining}
-                        variant="default"
-                      />
-                    ))
+                    slotEvents.map((event) => {
+                      // Get all events for this date
+                      const dateEvents = getEventsForDate(date);
+                      return (
+                        <EventCard
+                          key={event.id}
+                          event={event}
+                          formatTime={formatTime}
+                          getTimeRemaining={getTimeRemaining}
+                          variant="default"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Pass the specific clicked event - popover will show only this event
+                            if (onDateClick) {
+                              onDateClick(date, dateEvents, e, event);
+                            }
+                          }}
+                        />
+                      );
+                    })
                   ) : null}
                 </div>
               );
@@ -507,8 +618,131 @@ function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeR
   );
 }
 
+// Event Details Popover Component - Google Calendar style
+function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTimeRemaining, position }) {
+  if (!isOpen || !date) return null;
+
+  const formatShortDate = (date) => {
+    const options = { weekday: 'long', month: 'long', day: 'numeric' };
+    return date.toLocaleDateString('en-US', options);
+  };
+
+  return (
+    <div
+      id="event-popover"
+      className="fixed z-50 bg-white rounded-lg shadow-2xl border border-gray-200 w-80 max-h-[500px] overflow-hidden flex flex-col"
+      style={{
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+      }}
+    >
+      {/* Header */}
+      <div className="relative bg-gradient-to-br from-blue-600 to-blue-800 p-4">
+        {/* Close button - top right */}
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 p-1.5 hover:bg-white/20 rounded-full transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-4 h-4 text-white" />
+        </button>
+
+        {/* Date info */}
+        <div className="pr-8">
+          <div className="text-white text-sm font-medium">
+            {formatShortDate(date)}
+          </div>
+          {events && events.length > 0 && (
+            <div className="text-white text-xs mt-1 opacity-90">
+              {events.length} {events.length === 1 ? 'event' : 'events'}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Body - Scrollable - Shows ALL events for the date */}
+      <div className="p-4 overflow-y-auto flex-1 bg-white" style={{ maxHeight: '400px' }}>
+        {events && events.length > 0 ? (
+          <div className="space-y-3">
+            {events.map((event) => (
+              <div
+                key={event.id}
+                className="bg-gray-50 rounded-lg p-3 border border-gray-200"
+              >
+                {/* Event Title */}
+                <div className="flex items-start gap-2 mb-2">
+                  <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0"></div>
+                  <div className="flex-1">
+                    <h3 className="text-gray-900 text-sm font-semibold mb-1">
+                      {event.title}
+                    </h3>
+                    <div className="text-gray-600 text-xs mb-2">
+                      {formatTime(event.startTime)} - {formatTime(event.endTime)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Event Details */}
+                <div className="space-y-1.5 text-xs text-gray-600">
+                  {event.location && (
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3 h-3 text-gray-400" />
+                      <span className="truncate">{event.location}</span>
+                    </div>
+                  )}
+                  
+                  {event.type && (
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="w-3 h-3 text-gray-400" />
+                      <span className="capitalize">{event.type}</span>
+                    </div>
+                  )}
+                  
+                  {event.caseNo && (
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="w-3 h-3 text-gray-400" />
+                      <span>Case: {event.caseNo}</span>
+                    </div>
+                  )}
+
+                  {event.hasVideo && (
+                    <div className="flex items-center gap-2 text-blue-600 mt-1">
+                      <span className="text-xs">✓ Video Available</span>
+                    </div>
+                  )}
+
+                  {event.status === 'pending' && (
+                    <div className="mt-2 bg-red-50 border border-red-200 rounded p-2">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Clock className="w-3 h-3 text-red-600" />
+                        <span className="text-xs font-medium text-red-700">Videos Pending</span>
+                      </div>
+                      <div className="text-xs text-red-600">
+                        {event.videosUploaded}/{event.totalVideos} uploaded
+                      </div>
+                      {event.deadline && getTimeRemaining(event.deadline) && (
+                        <div className="text-xs text-red-500 mt-1">
+                          {getTimeRemaining(event.deadline).hours}h {getTimeRemaining(event.deadline).minutes}m left
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-6 text-gray-400">
+            <p className="text-sm">No events scheduled</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Month View Component
-function MonthView({ monthCalendar, currentDate, getEventsForDate, formatTime, getTimeRemaining, dayNames }) {
+function MonthView({ monthCalendar, currentDate, getEventsForDate, formatTime, getTimeRemaining, dayNames, onDateClick }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="grid grid-cols-7 border-b border-gray-200">
@@ -539,25 +773,37 @@ function MonthView({ monthCalendar, currentDate, getEventsForDate, formatTime, g
                     !isCurrentMonth ? 'bg-gray-50' : 'bg-white'
                   }`}
                 >
-                  <div className={`text-sm font-medium mb-1 ${
-                    !isCurrentMonth 
-                      ? 'text-gray-300' 
-                      : isToday 
-                        ? 'text-blue-600 font-bold' 
-                        : 'text-gray-900'
-                  }`}>
+                  <div 
+                    className={`text-sm font-medium mb-1 cursor-pointer hover:text-blue-600 transition-colors ${
+                      !isCurrentMonth 
+                        ? 'text-gray-300' 
+                        : isToday 
+                          ? 'text-blue-600 font-bold' 
+                          : 'text-gray-900'
+                    }`}
+                    onClick={(e) => onDateClick && onDateClick(date, events, e)}
+                  >
                     {date.getDate()}
                   </div>
                   <div className="space-y-1">
-                    {events.map((event) => (
-                      <EventCard
-                        key={event.id}
-                        event={event}
-                        formatTime={formatTime}
-                        getTimeRemaining={getTimeRemaining}
-                        variant="compact"
-                      />
-                    ))}
+                    {events.map((event) => {
+                      // Get all events for this date
+                      const allDateEvents = getEventsForDate(date);
+                      return (
+                        <EventCard
+                          key={event.id}
+                          event={event}
+                          formatTime={formatTime}
+                          getTimeRemaining={getTimeRemaining}
+                          variant="compact"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Pass the specific clicked event - popover will show only this event
+                            onDateClick && onDateClick(date, allDateEvents, e, event);
+                          }}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
               );
