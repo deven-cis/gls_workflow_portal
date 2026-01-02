@@ -33,7 +33,11 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const selectedJobId = searchParams.get('jobId');
     const toast = useToast();
     
+    // State to hold caseNo from task for fallback in case management
+    const [taskCaseNo, setTaskCaseNo] = useState(null);
+    
     // Use custom hook for case management (must be after toast initialization)
+    // Pass taskCaseNo as fallback for case number when caseInfo.case_number is null
     const {
         formData,
         isCaseEdited,
@@ -42,7 +46,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         handleEditCase,
         handleSaveCase,
         handleCancelCase
-    } = useCaseManagement(caseId, caseInfo, toast);
+    } = useCaseManagement(caseId, caseInfo, toast, taskCaseNo);
     
     // Use custom hook for witness management (must be after toast initialization)
     const {
@@ -237,6 +241,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                 
                 if (foundJob) {
                     setTask(foundJob);
+                    setTaskCaseNo(foundJob.caseNo); // Set caseNo for case number fallback
                     setIsUpcomingTask(false); // It's a pending task
                     
                     // Sync mark_is_done status from backend
@@ -253,6 +258,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                 
                 if (foundUpcomingJob) {
                     setTask(foundUpcomingJob);
+                    setTaskCaseNo(foundUpcomingJob.caseNo); // Set caseNo for case number fallback
                     setIsUpcomingTask(true); // It's an upcoming task - disable all sections
                     
                     // Sync mark_is_done status from backend

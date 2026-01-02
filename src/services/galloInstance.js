@@ -1,5 +1,3 @@
-
-import { handleTokenRefresh, ensureValidToken } from '@/lib/tokenRefresh';
 import { getRefreshToken, logout } from '@/lib/auth';
 
 /**
@@ -118,10 +116,7 @@ export const galloInstance = async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}${endpoint}`;
     
     // Get the access token from localStorage
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-    console.log('Token:', token);
-    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refresh_token') : null;
-
+    let token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
     
     // Check if body is FormData - if so, don't set Content-Type (browser will set it with boundary)
     // Be robust: instanceof can fail across realms/polyfills

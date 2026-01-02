@@ -8,6 +8,7 @@ const CaseDetails = forwardRef(({
     handleSaveCase, 
     handleCancelCase 
 }, ref) => {
+
     const [localFormData, setLocalFormData] = useState({
         caseName: formData.caseName || '',
         caseNumber: formData.caseNumber || ''
@@ -19,12 +20,13 @@ const CaseDetails = forwardRef(({
     }));
 
     // Update local state when formData prop changes (e.g., after cancel)
+    // Use primitive values as dependencies to avoid infinite loops from object reference changes
     useEffect(() => {
         setLocalFormData({
             caseName: formData.caseName || '',
             caseNumber: formData.caseNumber || ''
         });
-    }, [formData]);
+    }, [formData.caseName, formData.caseNumber]);
 
     const handleInputChange = (field, value) => {
         setLocalFormData(prev => ({

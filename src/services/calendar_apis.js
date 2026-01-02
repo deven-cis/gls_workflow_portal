@@ -110,6 +110,7 @@ const mapCalendarEvent = (apiEvent) => {
   
   const mappedEvent = {
     id: apiEvent.job_no || apiEvent.id,
+    caseId: apiEvent?.case_id, 
     title: apiEvent.case?.case_short_name || apiEvent.title || apiEvent.case_short_name || `Job #${apiEvent.job_no}`,
     date: jobDate, // This is already a normalized Date object
     startTime: startTime,
@@ -126,10 +127,9 @@ const mapCalendarEvent = (apiEvent) => {
     type: apiEvent.case?.case_type || apiEvent.type || apiEvent.case_type || 'deposition',
     location: apiEvent.job_loc_name || apiEvent.location || '',
     caseNo: apiEvent.case_no || apiEvent.caseNo,
-    jobNo: apiEvent.job_no,
+    jobNo: apiEvent.id,
     computedStatus: computedStatus,
   };
-  
   return mappedEvent;
 };
 

@@ -1,5 +1,5 @@
 import { authAPI } from '@/services/api';
-import { getRefreshToken, setToken, setRefreshToken, isTokenExpired, getToken, logout } from './auth.js';
+import { getRefreshToken, setToken, setRefreshToken, isTokenExpired, getToken, logout, getTokenTimeUntilExpiry } from './auth.js';
 
 // Flag to prevent multiple concurrent refresh attempts
 let isRefreshing = false;
@@ -34,16 +34,20 @@ async function refreshAccessToken() {
         console.log('Refreshing access token...');
         const response = await authAPI.refreshToken(refreshToken);
         
-        if (response.access_token) {
+        // Backend returns: { success, result: { access_token, refresh_token, ... } }
+        // Extract the actual token data from result if present
+        const tokenData = response?.result || response;
+        
+        if (tokenData.access_token) {
             console.log('Token refreshed successfully');
-            setToken(response.access_token);
+            setToken(tokenData.access_token);
             
             // Update refresh token if a new one is provided
-            if (response.refresh_token) {
-                setRefreshToken(response.refresh_token);
+            if (tokenData.refresh_token) {
+                setRefreshToken(tokenData.refresh_token);
             }
             
-            return response;
+            return tokenData;
         } else {
             throw new Error('No access token in refresh response');
         }

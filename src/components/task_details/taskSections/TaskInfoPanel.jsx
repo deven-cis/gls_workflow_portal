@@ -62,7 +62,6 @@ export default function TaskInfoPanel({
 }) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef(null);
-    console.log('task-------------------', task);
     // Get effective jobNo from prop, query params, or URL path
     const jobNo = useEffectiveJobNo(jobNoProp);
 
@@ -154,7 +153,7 @@ export default function TaskInfoPanel({
                 <div className="flex items-center gap-2 text-gray-600">
                     <Clock className="w-5 h-5" />
                     <span className="text-sm">
-                        {task.date ? `${task.date}, ` : ''}{task.time || 'Time not specified'}
+                        {task.date ? `${task.date}, ` : ''}{task.startTime || 'Time not specified'}
                     </span>
                 </div>
             </div>

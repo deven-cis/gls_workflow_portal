@@ -82,6 +82,7 @@ export const casesAPI = {
   // Get pending tasks from backendx`
   getPendingTasks: async () => {
     const response = await galloInstance('/jobs/pending/');
+    console.log('Pending tasks:', response);
     return Array.isArray(response) ? response.map(mapJobToTask) : [];
   },
 

@@ -1,6 +1,7 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Clock, X, MapPin, Calendar as CalendarIcon, Lock } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Clock, X, MapPin, Calendar as CalendarIcon, Lock, ExternalLink } from 'lucide-react';
 import { calendarAPI } from '@/services/calendar_apis';
 
 // Constants
@@ -52,22 +53,44 @@ const isSameDate = (date1, date2) => {
 };
 
 // Reusable EventCard Component
-function EventCard({ event, formatTime, getTimeRemaining, variant = 'default', onClick }) {
+function EventCard({ event, formatTime, getTimeRemaining, variant = 'default', onClick, onNavigate }) {
   const isPending = event.status === 'pending';
   const timeRemaining = event.deadline ? getTimeRemaining(event.deadline) : null;
   const isCompact = variant === 'compact';
+  
+  // Build task details URL: /dashboard/task-details/{caseId}?jobId={jobNo}
+  const hasValidLink = event.caseId && event.id;
+  
+  const handleLinkClick = (e) => {
+    e.stopPropagation(); // Prevent triggering the card's onClick
+    if (hasValidLink && onNavigate) {
+      onNavigate(`/dashboard/task-details/${event.caseId}?jobId=${event.id}`);
+    }
+  };
 
   return (
     <div
       className={`rounded-md overflow-hidden ${isCompact ? 'mb-1' : 'mb-1'} cursor-pointer hover:opacity-90 transition-opacity`}
       onClick={onClick}
     >
-      {/* Blue header bar with time */}
-      <div className="bg-blue-600 text-white px-2 py-1 flex items-center">
-        <div className="w-0.5 h-3 bg-white mr-2 flex-shrink-0"></div>
-        <div className="text-xs font-semibold truncate">
-          {formatTime(event.startTime)} - {formatTime(event.endTime)}
+      {/* Blue header bar with time and link icon */}
+      <div className="bg-blue-600 text-white px-2 py-1 flex items-center justify-between">
+        <div className="flex items-center flex-1 min-w-0">
+          <div className="w-0.5 h-3 bg-white mr-2 flex-shrink-0"></div>
+          <div className="text-xs font-semibold truncate">
+            {formatTime(event.startTime)} - {formatTime(event.endTime)}
+          </div>
         </div>
+        {/* Link icon to navigate to task details */}
+        {hasValidLink && (
+          <button
+            onClick={handleLinkClick}
+            className="ml-1 p-0.5 hover:bg-white/20 rounded transition-colors flex-shrink-0"
+            title="Open task details"
+          >
+            <ExternalLink className="w-3 h-3" />
+          </button>
+        )}
       </div>
 
       {/* Light blue-gray card body */}
@@ -152,11 +175,17 @@ export default function CalendarView({
   initialDate = null,
   initialViewMode = 'month'
 }) {
+  const router = useRouter();
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());
   const [viewMode, setViewMode] = useState(initialViewMode);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Navigate to task details page
+  const handleNavigateToTask = useCallback((url) => {
+    router.push(url);
+  }, [router]);
 
   // Fetch events from API
   useEffect(() => {
@@ -247,24 +276,37 @@ export default function CalendarView({
     });
   };
 
-  // Get week dates
+  // Get week dates - week starts on Monday
   const weekDates = useMemo(() => {
     const dates = [];
-    const startOfWeek = new Date(currentDate);
-    const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1);
-    startOfWeek.setDate(diff);
-    startOfWeek.setHours(0, 0, 0, 0); // Normalize to midnight
-
+    
+    // Clone currentDate and normalize to midnight
+    const current = new Date(currentDate);
+    current.setHours(0, 0, 0, 0);
+    
+    // Get day of week (0=Sun, 1=Mon, ..., 6=Sat)
+    const dayOfWeek = current.getDay();
+    
+    // Calculate days to subtract to get to Monday
+    // Monday = 1, so we go back (dayOfWeek - 1) days
+    // Special case: Sunday (0) means go back 6 days to previous Monday
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    
+    // Calculate Monday's date by subtracting days
+    const monday = new Date(current);
+    monday.setDate(current.getDate() - daysFromMonday);
+    monday.setHours(0, 0, 0, 0);
+    
+    // Generate 7 days starting from Monday
     for (let i = 0; i < 7; i++) {
-      const date = new Date(startOfWeek);
-      date.setDate(startOfWeek.getDate() + i);
-      date.setHours(0, 0, 0, 0); // Normalize to midnight
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + i);
+      date.setHours(0, 0, 0, 0);
       dates.push(date);
     }
     
     return dates;
-  }, [currentDate, viewMode, events]);
+  }, [currentDate]);
 
   // Get month calendar grid
   const monthCalendar = useMemo(() => {
@@ -472,6 +514,7 @@ export default function CalendarView({
               getTimeRemaining={getTimeRemaining}
               dayNames={DAY_NAMES}
               onDateClick={handleDateClick}
+              onNavigate={handleNavigateToTask}
             />
           ) : (
             <MonthView 
@@ -482,6 +525,7 @@ export default function CalendarView({
               getTimeRemaining={getTimeRemaining}
               dayNames={DAY_NAMES}
               onDateClick={handleDateClick}
+              onNavigate={handleNavigateToTask}
             />
           )}
         </>
@@ -496,13 +540,14 @@ export default function CalendarView({
         formatTime={formatTime}
         getTimeRemaining={getTimeRemaining}
         position={popoverPosition}
+        onNavigate={handleNavigateToTask}
       />
     </div>
   );
 }
 
 // Week View Component
-function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeRemaining, dayNames, onDateClick }) {
+function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeRemaining, dayNames, onDateClick, onNavigate }) {
   const eventInSlot = (event, slot) => {
     if (slot === 'all-day') {
       // For 'all-day' slot, include events that span the entire day or have no specific time
@@ -597,6 +642,7 @@ function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeR
                           formatTime={formatTime}
                           getTimeRemaining={getTimeRemaining}
                           variant="default"
+                          onNavigate={onNavigate}
                           onClick={(e) => {
                             e.stopPropagation();
                             // Pass the specific clicked event - popover will show only this event
@@ -619,12 +665,19 @@ function WeekView({ weekDates, timeSlots, getEventsForDate, formatTime, getTimeR
 }
 
 // Event Details Popover Component - Google Calendar style
-function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTimeRemaining, position }) {
+function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTimeRemaining, position, onNavigate }) {
   if (!isOpen || !date) return null;
 
   const formatShortDate = (date) => {
     const options = { weekday: 'long', month: 'long', day: 'numeric' };
     return date.toLocaleDateString('en-US', options);
+  };
+  
+  // Handle navigation to task details
+  const handleViewDetails = (event) => {
+    if (event.caseId && event.id && onNavigate) {
+      onNavigate(`/dashboard/task-details/${event.caseId}?jobId=${event.id}`);
+    }
   };
 
   return (
@@ -669,13 +722,25 @@ function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTim
                 key={event.id}
                 className="bg-gray-50 rounded-lg p-3 border border-gray-200"
               >
-                {/* Event Title */}
+                {/* Event Title with Link Icon */}
                 <div className="flex items-start gap-2 mb-2">
                   <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0"></div>
                   <div className="flex-1">
-                    <h3 className="text-gray-900 text-sm font-semibold mb-1">
-                      {event.title}
-                    </h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-gray-900 text-sm font-semibold mb-1">
+                        {event.title}
+                      </h3>
+                      {/* Link icon to navigate to task details */}
+                      {event.caseId && event.id && (
+                        <button
+                          onClick={() => handleViewDetails(event)}
+                          className="p-1 hover:bg-gray-200 rounded transition-colors flex-shrink-0"
+                          title="Open task details"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                        </button>
+                      )}
+                    </div>
                     <div className="text-gray-600 text-xs mb-2">
                       {formatTime(event.startTime)} - {formatTime(event.endTime)}
                     </div>
@@ -742,7 +807,7 @@ function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTim
 }
 
 // Month View Component
-function MonthView({ monthCalendar, currentDate, getEventsForDate, formatTime, getTimeRemaining, dayNames, onDateClick }) {
+function MonthView({ monthCalendar, currentDate, getEventsForDate, formatTime, getTimeRemaining, dayNames, onDateClick, onNavigate }) {
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <div className="grid grid-cols-7 border-b border-gray-200">
@@ -796,6 +861,7 @@ function MonthView({ monthCalendar, currentDate, getEventsForDate, formatTime, g
                           formatTime={formatTime}
                           getTimeRemaining={getTimeRemaining}
                           variant="compact"
+                          onNavigate={onNavigate}
                           onClick={(e) => {
                             e.stopPropagation();
                             // Pass the specific clicked event - popover will show only this event

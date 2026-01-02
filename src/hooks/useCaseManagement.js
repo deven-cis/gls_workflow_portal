@@ -5,11 +5,12 @@ import { validateCaseDetails } from '@/lib/utils';
 /**
  * Custom hook to manage all case-related state and operations
  * @param {string|number} caseId - The case ID
- * {Object} caseInfo - Case information from backend
+ * @param {Object} caseInfo - Case information from backend
  * @param {Function} toast - Toast notification function
+ * @param {string|number} fallbackCaseNo - Fallback case number from job/task if case_number is null
  * @returns {Object} Case management state and handlers
  */
-export const useCaseManagement = (caseId, caseInfo, toast) => {
+export const useCaseManagement = (caseId, caseInfo, toast, fallbackCaseNo = null) => {
     // Case form state
     const [formData, setFormData] = useState({ caseName: '', caseNumber: '' });
     const [isCaseEdited, setIsCaseEdited] = useState(false);
@@ -22,12 +23,13 @@ export const useCaseManagement = (caseId, caseInfo, toast) => {
         if (!caseInfo) return;
         const next = {
             caseName: caseInfo.case_short_name ?? '',
-            caseNumber: caseInfo.case_number ?? ''
+            // Use case_number from caseInfo, or fallback to caseNo from task/job
+            caseNumber: caseInfo.case_number ?? fallbackCaseNo ?? ''
         };
         setFormData(next);
         lastSavedRef.current = next;
         setIsCaseEdited(false);
-    }, [caseInfo]);
+    }, [caseInfo, fallbackCaseNo]);
 
     // Handle edit case
     const handleEditCase = useCallback(() => {
