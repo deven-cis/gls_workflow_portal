@@ -236,7 +236,9 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
 
             try {
                 // Try to get job from pending tasks first
-                const pendingTasks = await casesAPI.getPendingTasks();
+                // Load first page (5 items) - if not found, we might need to search more pages
+                const pendingResult = await casesAPI.getPendingTasks(1, 5);
+                const pendingTasks = pendingResult.tasks || [];
                 const foundJob = pendingTasks.find(t => t.id === selectedJobId || t.jobId === `Job${selectedJobId}`);
                 
                 if (foundJob) {
@@ -253,7 +255,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                 }
 
                 // If not found in pending, try upcoming tasks
-                const upcomingTasks = await casesAPI.getUpcomingTasks();
+                const upcomingResult = await casesAPI.getUpcomingTasks(1, 5);
+                const upcomingTasks = upcomingResult.tasks || [];
                 const foundUpcomingJob = upcomingTasks.find(t => t.id === selectedJobId || t.jobId === `Job${selectedJobId}`);
                 
                 if (foundUpcomingJob) {

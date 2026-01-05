@@ -6,7 +6,8 @@ let API_BASE_URL = GALLo_URL;
 
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
-  const dateStr = jobDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const jobYear = jobDate.getFullYear();
+  const dateStr = jobDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric'});
   const start_time = job.start_time ? job.start_time.substring(0, 5) : '00:00';
   const end_time = job.end_time ? job.end_time.substring(0, 5) : '00:00';
   const startTimeStr = formatTime12Hour(start_time);
@@ -16,6 +17,7 @@ const mapJobToTask = (job) => {
     id: job.job_no,
     jobId: `Job${job.job_no}`,
     date: dateStr,
+    jobYear: jobYear,
     startTime: startTimeStr,
     endTime: endTimeStr,
     title: job.case?.case_short_name || `Job #${job.job_no}`,
@@ -79,11 +81,67 @@ export const casesAPI = {
     return data;
   },
 
-  // Get pending tasks from backendx`
-  getPendingTasks: async () => {
-    const response = await galloInstance('/jobs/pending/');
-    console.log('Pending tasks:', response);
-    return Array.isArray(response) ? response.map(mapJobToTask) : [];
+  // Get pending tasks from backend with pagination
+  // page: page number (default: 1)
+  // pageSize: items per page (default: 5)
+  getPendingTasks: async (page = 1, pageSize = 5) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('page_size', pageSize.toString());
+      
+      const response = await galloInstance(`/jobs/pending/?${params.toString()}`);
+      
+      // Handle error response
+      if (!response || response.success === false) {
+        console.log('No pending tasks found or backend error:', response?.message || 'Unknown error');
+        return {
+          tasks: [],
+          pagination: {
+            page: 1,
+            pageSize: pageSize,
+            total: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrevious: false
+          }
+        };
+      }
+      
+      // Map pagination from backend (snake_case) to frontend (camelCase)
+      const backendPagination = response.pagination || {};
+      const pagination = {
+        page: backendPagination.page || page,
+        pageSize: backendPagination.page_size || pageSize,
+        total: backendPagination.total || 0,
+        totalPages: backendPagination.total_pages || 0,
+        hasNext: backendPagination.has_next || false,
+        hasPrevious: backendPagination.has_previous || false
+      };
+      
+      // Map jobs to task format
+      const jobs = Array.isArray(response.result) ? response.result : [];
+      const tasks = jobs.map(mapJobToTask);
+      console.log("tasks---------------------------",tasks);
+      
+      return {
+        tasks: tasks,
+        pagination: pagination
+      };
+    } catch (err) {
+      console.error('Failed to fetch pending tasks:', err);
+      return {
+        tasks: [],
+        pagination: {
+          page: 1,
+          pageSize: pageSize,
+          total: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrevious: false
+        }
+      };
+    }
   },
 
   // Get job details with mark_is_done status
@@ -105,11 +163,66 @@ export const casesAPI = {
     }
   },
 
-  // Get upcoming tasks from backend
-  getUpcomingTasks: async () => {
-    const response = await galloInstance('/jobs/upcoming/');
-    // Map backend response to frontend format
-    return Array.isArray(response) ? response.map(mapJobToTask) : [];
+  // Get upcoming tasks from backend with pagination
+  // page: page number (default: 1)
+  // pageSize: items per page (default: 5)
+  getUpcomingTasks: async (page = 1, pageSize = 5) => {
+    try {
+      const params = new URLSearchParams();
+      params.append('page', page.toString());
+      params.append('page_size', pageSize.toString());
+      
+      const response = await galloInstance(`/jobs/upcoming/?${params.toString()}`);
+      
+      // Handle error response
+      if (!response || response.success === false) {
+        console.log('No upcoming tasks found or backend error:', response?.message || 'Unknown error');
+        return {
+          tasks: [],
+          pagination: {
+            page: 1,
+            pageSize: pageSize,
+            total: 0,
+            totalPages: 0,
+            hasNext: false,
+            hasPrevious: false
+          }
+        };
+      }
+      
+      // Map pagination from backend (snake_case) to frontend (camelCase)
+      const backendPagination = response.pagination || {};
+      const pagination = {
+        page: backendPagination.page || page,
+        pageSize: backendPagination.page_size || pageSize,
+        total: backendPagination.total || 0,
+        totalPages: backendPagination.total_pages || 0,
+        hasNext: backendPagination.has_next || false,
+        hasPrevious: backendPagination.has_previous || false
+      };
+      
+      // Map jobs to task format
+      const jobs = Array.isArray(response.result) ? response.result : [];
+      const tasks = jobs.map(mapJobToTask);
+      
+      return {
+        tasks: tasks,
+        pagination: pagination
+      };
+    } catch (err) {
+      console.error('Failed to fetch upcoming tasks:', err);
+      return {
+        tasks: [],
+        pagination: {
+          page: 1,
+          pageSize: pageSize,
+          total: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrevious: false
+        }
+      };
+    }
   },
 
 

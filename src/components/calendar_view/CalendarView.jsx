@@ -1,6 +1,6 @@
 "use client";
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Clock, X, MapPin, Calendar as CalendarIcon, Lock, ExternalLink } from 'lucide-react';
 import { calendarAPI } from '@/services/calendar_apis';
 
@@ -151,6 +151,8 @@ function ViewToggle({ viewMode, onViewChange }) {
             ? 'bg-white text-gray-900 shadow-lg'
             : 'text-gray-600 hover:text-gray-900'
         }`}
+        aria-pressed={viewMode === 'week'}
+        aria-label="Switch to Week View"
       >
         Week
       </button>
@@ -161,6 +163,8 @@ function ViewToggle({ viewMode, onViewChange }) {
             ? 'bg-white text-gray-900 shadow-lg'
             : 'text-gray-600 hover:text-gray-900'
         }`}
+        aria-pressed={viewMode === 'month'}
+        aria-label="Switch to Month View"
       >
         Month
       </button>
@@ -176,8 +180,14 @@ export default function CalendarView({
   initialViewMode = 'month'
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Get initial viewMode from URL, default to 'month' (like history view tabs)
+  const viewModeFromUrl = searchParams.get('calendarView');
+  const initialView = viewModeFromUrl === 'week' ? 'week' : 'month';
+  
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());
-  const [viewMode, setViewMode] = useState(initialViewMode);
+  const [viewMode, setViewMode] = useState(initialView);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -186,6 +196,29 @@ export default function CalendarView({
   const handleNavigateToTask = useCallback((url) => {
     router.push(url);
   }, [router]);
+
+  // Sync viewMode with URL parameter when it changes
+  useEffect(() => {
+    const viewModeFromUrl = searchParams.get('calendarView');
+    const newView = viewModeFromUrl === 'week' ? 'week' : 'month';
+    if (newView !== viewMode) {
+      setViewMode(newView);
+    }
+  }, [searchParams, viewMode]);
+
+  // Handle view mode change with URL update
+  const handleViewModeChange = useCallback((newViewMode) => {
+    setViewMode(newViewMode);
+    
+    // Update URL to persist view selection (like history view tabs)
+    const params = new URLSearchParams(searchParams.toString());
+    if (newViewMode === 'month') {
+      params.delete('calendarView'); // Remove param for default (month)
+    } else {
+      params.set('calendarView', newViewMode);
+    }
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [searchParams, router]);
 
   // Fetch events from API
   useEffect(() => {
@@ -204,8 +237,44 @@ export default function CalendarView({
           // Fetch week events
           fetchedEvents = await calendarAPI.getWeekEvents(year, month, day);
         } else {
-          // Fetch month events
-          fetchedEvents = await calendarAPI.getMonthEvents(year, month);
+          // For month view, calculate the date range that includes:
+          // - Previous month's trailing days (shown in calendar grid)
+          // - Current month's days
+          // - Next month's leading days (shown in calendar grid)
+          
+          const jsMonth = currentDate.getMonth(); // 0-indexed
+          const jsYear = currentDate.getFullYear();
+          
+          // Get first day of current month
+          const firstDay = new Date(jsYear, jsMonth, 1);
+          const startingDayOfWeek = firstDay.getDay();
+          
+          // Calculate previous month's trailing days
+          const prevMonth = new Date(jsYear, jsMonth, 0);
+          const daysInPrevMonth = prevMonth.getDate();
+          const trailingDays = startingDayOfWeek; // Number of trailing days from previous month
+          
+          // Get last day of current month
+          const lastDay = new Date(jsYear, jsMonth + 1, 0);
+          const lastDayOfWeek = lastDay.getDay();
+          const leadingDays = lastDayOfWeek === 6 ? 0 : 6 - lastDayOfWeek; // Number of leading days from next month
+          
+          // Calculate start date (first trailing day from previous month)
+          // If trailingDays = 0, start from first day of current month
+          const startDate = trailingDays > 0 
+            ? new Date(jsYear, jsMonth - 1, daysInPrevMonth - trailingDays + 1)
+            : new Date(jsYear, jsMonth, 1);
+          startDate.setHours(0, 0, 0, 0);
+          
+          // Calculate end date (last leading day from next month)
+          // If leadingDays = 0, end on last day of current month
+          const endDate = leadingDays > 0
+            ? new Date(jsYear, jsMonth + 1, leadingDays)
+            : new Date(jsYear, jsMonth + 1, 0);
+          endDate.setHours(23, 59, 59, 999);
+          
+          // Fetch events for the entire calendar grid range
+          fetchedEvents = await calendarAPI.getCustomRangeEvents(startDate, endDate);
         }
         
         // Ensure fetchedEvents is an array
@@ -484,7 +553,7 @@ export default function CalendarView({
           </button>
         </div>
 
-        <ViewToggle viewMode={viewMode} onViewChange={setViewMode} />
+        <ViewToggle viewMode={viewMode} onViewChange={handleViewModeChange} />
       </div>
 
       {/* Loading State */}

@@ -37,6 +37,25 @@ export default function HistoryView() {
     const [loading, setLoading] = useState(false);
     const calendarRef = useRef(null);
     const toast = useToast();
+    
+    // Pagination state - separate for each tab
+    // Temporarily set pageSize to 1 for testing - change back to 10 when done
+    const [completedPagination, setCompletedPagination] = useState({
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false
+    });
+    const [cancelledPagination, setCancelledPagination] = useState({
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrevious: false
+    });
 
 
     useEffect(() => {
@@ -59,6 +78,9 @@ export default function HistoryView() {
     const startDate = activeTab === 'completed' ? completedStartDate : cancelledStartDate;
     const endDate = activeTab === 'completed' ? completedEndDate : cancelledEndDate;
 
+    // Get current pagination based on active tab
+    const currentPagination = activeTab === 'completed' ? completedPagination : cancelledPagination;
+
     // Fetch jobs based on active tab and date range
     useEffect(() => {
         const fetchJobs = async () => {
@@ -67,12 +89,20 @@ export default function HistoryView() {
                 const type = activeTab === 'completed' ? 'Completed' : 'Cancelled';
                 const currentStartDate = activeTab === 'completed' ? completedStartDate : cancelledStartDate;
                 const currentEndDate = activeTab === 'completed' ? completedEndDate : cancelledEndDate;
-                const jobs = await historyAPI.getJobsByType(type, currentStartDate, currentEndDate);
+                const currentPage = activeTab === 'completed' ? completedPagination.page : cancelledPagination.page;
+                const pageSize = activeTab === 'completed' ? completedPagination.pageSize : cancelledPagination.pageSize;
+                
+                const result = await historyAPI.getJobsByType(type, currentStartDate, currentEndDate, currentPage, pageSize);
+                
+                // Debug: Log pagination data
+                console.log(`${type} jobs pagination:`, result.pagination);
                 
                 if (activeTab === 'cancelled') {
-                    setCancelledJobs(jobs || []);
+                    setCancelledJobs(result.jobs || []);
+                    setCancelledPagination(result.pagination || cancelledPagination);
                 } else {
-                    setCompletedJobs(jobs || []);
+                    setCompletedJobs(result.jobs || []);
+                    setCompletedPagination(result.pagination || completedPagination);
                 }
             } catch (err) {
                 // Log to console only - no error overlay or toast
@@ -88,7 +118,7 @@ export default function HistoryView() {
         };
 
         fetchJobs();
-    }, [activeTab, completedStartDate, completedEndDate, cancelledStartDate, cancelledEndDate]);
+    }, [activeTab, completedStartDate, completedEndDate, cancelledStartDate, cancelledEndDate, completedPagination.page, cancelledPagination.page]);
 
     const handleViewChange = (view) => {
         setActiveView(view);
@@ -96,6 +126,12 @@ export default function HistoryView() {
 
     const handleTabChange = (tab) => {
         setActiveTab(tab);
+        // Reset pagination when switching tabs
+        if (tab === 'completed') {
+            setCompletedPagination(prev => ({ ...prev, page: 1 }));
+        } else {
+            setCancelledPagination(prev => ({ ...prev, page: 1 }));
+        }
         // Update URL to persist tab selection
         const params = new URLSearchParams(searchParams.toString());
         if (tab === 'completed') {
@@ -106,9 +142,20 @@ export default function HistoryView() {
         router.replace(`?${params.toString()}`, { scroll: false });
     };
 
+    const handlePageChange = (newPage) => {
+        if (activeTab === 'completed') {
+            setCompletedPagination(prev => ({ ...prev, page: newPage }));
+        } else {
+            setCancelledPagination(prev => ({ ...prev, page: newPage }));
+        }
+        // Scroll to top when page changes
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     const handleDateChange = (start, end) => {
         // If both dates are provided, set them. Otherwise reset to null (no filter)
         // Apply to the currently active tab only
+        // Reset pagination to page 1 when date filter changes
         if (activeTab === 'completed') {
             if (start && end) {
                 setCompletedStartDate(start);
@@ -117,6 +164,7 @@ export default function HistoryView() {
                 setCompletedStartDate(null);
                 setCompletedEndDate(null);
             }
+            setCompletedPagination(prev => ({ ...prev, page: 1 }));
         } else {
             if (start && end) {
                 setCancelledStartDate(start);
@@ -125,6 +173,7 @@ export default function HistoryView() {
                 setCancelledStartDate(null);
                 setCancelledEndDate(null);
             }
+            setCancelledPagination(prev => ({ ...prev, page: 1 }));
         }
     };
 
@@ -344,16 +393,54 @@ export default function HistoryView() {
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
                     </div>
                 ) : hasHistory ? (
-                    <div className="space-y-3">
-                        {historyData.map((item) => (
-                            <HistoryCard 
-                                key={item.id} 
-                                item={item} 
-                                onClick={handleJobClick}
-                                activeTab={activeTab}
-                            />
-                        ))}
-                    </div>
+                    <>
+                        <div className="space-y-3">
+                            {historyData.map((item) => (
+                                <HistoryCard 
+                                    key={item.id} 
+                                    item={item} 
+                                    onClick={handleJobClick}
+                                    activeTab={activeTab}
+                                />
+                            ))}
+                        </div>
+                        
+                        {/* Pagination Controls */}
+                        {currentPagination && currentPagination.total > 0 && (
+                            <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-200 pt-4">
+                                <div className="text-sm text-gray-600 text-center sm:text-left">
+                                    {/* Showing {((currentPagination.page - 1) * currentPagination.pageSize) + 1} to {Math.min(currentPagination.page * currentPagination.pageSize, currentPagination.total)} of {currentPagination.total} results */}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => handlePageChange(currentPagination.page - 1)}
+                                        disabled={!currentPagination.hasPrevious}
+                                        className={`px-3 sm:px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                                            currentPagination.hasPrevious
+                                                ? 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 cursor-pointer'
+                                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        Previous
+                                    </button>
+                                    <div className="text-sm text-gray-600 px-2">
+                                        Page {currentPagination.page} of {currentPagination.totalPages}
+                                    </div>
+                                    <button
+                                        onClick={() => handlePageChange(currentPagination.page + 1)}
+                                        disabled={!currentPagination.hasNext}
+                                        className={`px-3 sm:px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                                            currentPagination.hasNext
+                                                ? 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 cursor-pointer'
+                                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 ) : (
                     <EmptyState />
                 )}

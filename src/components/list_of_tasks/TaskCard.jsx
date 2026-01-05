@@ -1,12 +1,18 @@
 "use client";
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapPin, Clock, MoreVertical } from 'lucide-react';
+import { MapPin, Clock, MoreVertical, Trash2 } from 'lucide-react';
 import CancelJobModal from '@/components/common/CancelJobModal';
 
-// Session status constants
-const SESSION_STARTED_STATUSES = ['Session Started', 'SESSION_IN_PROGRESS', 'SESSION_STARTED'];
-const SESSION_NOT_STARTED_STATUSES = ['Session not started', 'SESSION_NOT_STARTED', 'SCHEDULED'];
+// Session status constants - using Sets for O(1) lookup
+const SESSION_STARTED_STATUSES = new Set(['Session Started', 'SESSION_IN_PROGRESS', 'SESSION_STARTED']);
+const SESSION_NOT_STARTED_STATUSES = new Set(['Session not started', 'SESSION_NOT_STARTED', 'SCHEDULED']);
+
+// Month name map for O(1) lookup
+const MONTH_MAP = new Map([
+    ['jan', 0], ['feb', 1], ['mar', 2], ['apr', 3], ['may', 4], ['jun', 5],
+    ['jul', 6], ['aug', 7], ['sep', 8], ['oct', 9], ['nov', 10], ['dec', 11]
+]);
 
 // Parse time string to hours and minutes
 const parseTime = (timeStr) => {
@@ -15,8 +21,8 @@ const parseTime = (timeStr) => {
     // 12-hour format: "6:30 PM"
     const match12h = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
     if (match12h) {
-        let hours = parseInt(match12h[1]);
-        const minutes = parseInt(match12h[2]);
+        let hours = parseInt(match12h[1], 10);
+        const minutes = parseInt(match12h[2], 10);
         const period = match12h[3].toUpperCase();
         if (period === 'PM' && hours !== 12) hours += 12;
         if (period === 'AM' && hours === 12) hours = 0;
@@ -24,20 +30,62 @@ const parseTime = (timeStr) => {
     }
     
     // 24-hour format: "18:30"
-    const [hours, minutes] = timeStr.split(':').map(Number);
+    const parts = timeStr.split(':');
+    if (parts.length !== 2) return null;
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+    if (isNaN(hours) || isNaN(minutes)) return null;
     return { hours, minutes };
 };
 
+// Parse date string like "Dec 31" with year to Date object
+const parseJobDate = (dateStr, year) => {
+    if (!dateStr || !year) return null;
+    
+    try {
+        const match = dateStr.match(/(\w+)\s+(\d+)/);
+        if (!match) return null;
+        
+        const monthStr = match[1].toLowerCase();
+        const day = parseInt(match[2], 10);
+        const monthIndex = MONTH_MAP.get(monthStr);
+        
+        if (monthIndex === undefined || isNaN(day) || day < 1 || day > 31) return null;
+        
+        return new Date(year, monthIndex, day);
+    } catch (e) {
+        console.error('Error parsing job date:', e);
+        return null;
+    }
+};
+
+// Check if job date is today
+const isJobDateToday = (dateStr, year) => {
+    const jobDate = parseJobDate(dateStr, year);
+    if (!jobDate) return false;
+    
+    const now = new Date();
+    return jobDate.getDate() === now.getDate() &&
+           jobDate.getMonth() === now.getMonth() &&
+           jobDate.getFullYear() === now.getFullYear();
+};
+
 // Calculate remaining time until deadline
-const calculateDeadline = (endTime) => {
+const calculateDeadline = (endTime, jobDateStr, year) => {
+    // Only calculate deadline if job date is today
+    if (!isJobDateToday(jobDateStr, year)) return null;
+    
     const parsed = parseTime(endTime);
     if (!parsed) return null;
     
-    const now = new Date();
-    const deadline = new Date();
+    const jobDate = parseJobDate(jobDateStr, year);
+    if (!jobDate) return null;
+    
+    const now = Date.now();
+    const deadline = new Date(jobDate);
     deadline.setHours(parsed.hours, parsed.minutes, 0, 0);
     
-    const diffMs = deadline - now;
+    const diffMs = deadline.getTime() - now;
     if (diffMs <= 0) return null;
     
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -46,12 +94,12 @@ const calculateDeadline = (endTime) => {
     return `${hours}hrs ${minutes} min`;
 };
 
-// Status badge component
+// Status badge component (memoized for performance)
 const StatusBadge = ({ status }) => {
-    if (SESSION_STARTED_STATUSES.includes(status)) {
+    if (SESSION_STARTED_STATUSES.has(status)) {
         return <span className="px-3 py-1 bg-orange-50 text-orange-600 text-xs font-medium rounded-2xl">Session Started</span>;
     }
-    if (SESSION_NOT_STARTED_STATUSES.includes(status)) {
+    if (SESSION_NOT_STARTED_STATUSES.has(status)) {
         return <span className="px-3 py-1 bg-gray-100 text-gray-600 text-xs font-medium rounded-2xl">Session not Started</span>;
     }
     return null;
@@ -60,8 +108,9 @@ const StatusBadge = ({ status }) => {
 export default function TaskCard({ task, isHighlighted = false, isSelected = false, onSelect, isUpcoming = false, onCancelJob }) {
     const router = useRouter();
     const [showCancelModal, setShowCancelModal] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
     const [liveDeadline, setLiveDeadline] = useState(null);
-    
+    const menuRef = useRef(null);
     // Computed styles based on selection state
     const isActive = isHighlighted || isSelected;
     const styles = useMemo(() => ({
@@ -72,39 +121,65 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
         uploadBadge: isActive ? 'bg-blue-400 text-white' : 'bg-blue-100 text-blue-700',
     }), [isActive]);
     
-    // Check if session is started
-    const isSessionStarted = SESSION_STARTED_STATUSES.includes(task.status);
+    // Check if session is started (using Set for O(1) lookup)
+    const isSessionStarted = SESSION_STARTED_STATUSES.has(task.status);
     
-    // Live deadline updates
+    // Live deadline updates - only show if job date is today
     useEffect(() => {
-        if (!isSessionStarted || !task.endTime || isUpcoming) {
+        // Only show deadline if job date is today
+        if (!isSessionStarted || !task.endTime || isUpcoming || !isJobDateToday(task.date, task.jobYear)) {
             setLiveDeadline(null);
             return;
         }
         
-        const updateDeadline = () => setLiveDeadline(calculateDeadline(task.endTime));
+        const updateDeadline = () => setLiveDeadline(calculateDeadline(task.endTime, task.date, task.jobYear));
         updateDeadline();
         
+        // Update every minute to keep deadline accurate
         const interval = setInterval(updateDeadline, 60000);
         return () => clearInterval(interval);
-    }, [task.endTime, isSessionStarted, isUpcoming]);
+    }, [task.endTime, task.date, task.jobYear, isSessionStarted, isUpcoming]);
 
-    const handleCardClick = () => {
+    // Memoize callbacks to prevent unnecessary re-renders
+    const handleCardClick = useCallback(() => {
         onSelect?.(task.id);
         if (isSelected) {
             router.push(`/dashboard/task-details/${task.caseInfo?.id}?jobId=${task.id}`);
         }
-    };
+    }, [task.id, task.caseInfo?.id, isSelected, onSelect, router]);
 
-    const handleMoreClick = (e) => {
+    const handleMoreClick = useCallback((e) => {
         e.stopPropagation();
-        setShowCancelModal(true);
-    };
+        setShowMenu(!showMenu);
+    }, [showMenu]);
 
-    const handleCancelConfirm = async (cancelData) => {
+    const handleCancelJobClick = useCallback((e) => {
+        e.stopPropagation();
+        setShowMenu(false);
+        setShowCancelModal(true);
+    }, []);
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setShowMenu(false);
+            }
+        };
+
+        if (showMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showMenu]);
+
+    const handleCancelConfirm = useCallback(async (cancelData) => {
         await onCancelJob?.(task.id, cancelData);
         setShowCancelModal(false);
-    };
+    }, [task.id, onCancelJob]);
 
     return (
         <>
@@ -165,12 +240,34 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                                     {task.jobId}
                                 </span>
                             )}
-                            <button
-                                onClick={handleMoreClick}
-                                className={`p-1 hover:bg-gray-100/10 rounded transition-colors ${isActive ? 'text-white' : 'text-gray-400'}`}
-                            >
-                                <MoreVertical className="w-5 h-5" />
-                            </button>
+                            <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>
+                                <button
+                                    onClick={handleMoreClick}
+                                    className={`p-1 hover:bg-gray-100/10 rounded transition-colors ${isActive ? 'text-white' : 'text-gray-400'}`}
+                                    aria-label="More options"
+                                >
+                                    <MoreVertical className="w-5 h-5" />
+                                </button>
+                                
+                                {/* Dropdown Menu */}
+                                {showMenu && (
+                                    <>
+                                        <div 
+                                            className="fixed inset-0 z-40" 
+                                            onClick={() => setShowMenu(false)} 
+                                        />
+                                        <div className={`absolute right-0 top-8 z-50 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] ${isActive ? 'bg-white' : 'bg-white'}`}>
+                                            <button
+                                                onClick={handleCancelJobClick}
+                                                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                <span>Cancel Job</span>
+                                            </button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
                         {liveDeadline && (
                             <div className={`flex items-center gap-1 text-xs ${styles.textSubtle}`}>

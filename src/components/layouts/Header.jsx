@@ -64,8 +64,8 @@ export default function Header() {
             setTimeStr(now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
         };
         update();
-        // Optionally update time every minute
-        const interval = setInterval(update, 60000);
+        // Update time every second to stay in sync with system time
+        const interval = setInterval(update, 1000);
         return () => clearInterval(interval);
     }, []);
 

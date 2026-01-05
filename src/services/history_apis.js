@@ -30,11 +30,13 @@ const mapJobToHistory = (job) => {
 };
 
 export const historyAPI = {
-  // Get cancelled or completed jobs list
+  // Get cancelled or completed jobs list with pagination
   // type: 'Cancelled' or 'Completed'
   // startDate: Date object (optional)
   // endDate: Date object (optional)
-  getJobsByType: async (type, startDate = null, endDate = null) => {
+  // page: page number (default: 1)
+  // pageSize: items per page (default: 10)
+  getJobsByType: async (type, startDate = null, endDate = null, page = 1, pageSize = 10) => {
     try {
       // Format dates to YYYY-MM-DD for API
       const formatDateForAPI = (date) => {
@@ -53,10 +55,12 @@ export const historyAPI = {
       if (endDate) {
         params.append('end_date', formatDateForAPI(endDate));
       }
+      params.append('page', page.toString());
+      params.append('page_size', pageSize.toString());
 
       // Build URL with query parameters
       const queryString = params.toString();
-      const url = `/jobs/cancelled_and_completed_jobs/${type}${queryString ? `?${queryString}` : ''}`;
+      const url = `/jobs/cancelled_and_completed_jobs/${type}?${queryString}`;
       
       // Backend expects type as path parameter: /jobs/cancelled_and_completed_jobs/{type}
       const response = await galloInstance(url);
@@ -65,21 +69,68 @@ export const historyAPI = {
       if (!response || response.success === false) {
         // Log to console only, don't throw
         console.log(`No ${type} jobs found or backend error:`, response?.message || 'Unknown error');
-        return [];
+        const backendPagination = response?.pagination || {};
+        return {
+          jobs: [],
+          pagination: {
+            page: backendPagination.page || 1,
+            pageSize: backendPagination.page_size || pageSize,
+            total: backendPagination.total || 0,
+            totalPages: backendPagination.total_pages || 0,
+            hasNext: backendPagination.has_next || false,
+            hasPrevious: backendPagination.has_previous || false
+          }
+        };
       }
       
       // Handle empty result
       if (!response.result) {
-        return [];
+        const backendPagination = response.pagination || {};
+        return {
+          jobs: [],
+          pagination: {
+            page: backendPagination.page || page,
+            pageSize: backendPagination.page_size || pageSize,
+            total: backendPagination.total || 0,
+            totalPages: backendPagination.total_pages || 0,
+            hasNext: backendPagination.has_next || false,
+            hasPrevious: backendPagination.has_previous || false
+          }
+        };
       }
       
       // Map jobs to history format
-      const jobs = Array.isArray(response.result) ? response.result : Array.isArray(response) ? response : [];
-      return jobs.map(mapJobToHistory);
+      const jobs = Array.isArray(response.result) ? response.result : [];
+      
+      // Map pagination from backend (snake_case) to frontend (camelCase)
+      const backendPagination = response.pagination || {};
+      const pagination = {
+        page: backendPagination.page || page,
+        pageSize: backendPagination.page_size || pageSize,
+        total: backendPagination.total || jobs.length,
+        totalPages: backendPagination.total_pages || (jobs.length > 0 ? 1 : 0),
+        hasNext: backendPagination.has_next || false,
+        hasPrevious: backendPagination.has_previous || false
+      };
+      
+      return {
+        jobs: jobs.map(mapJobToHistory),
+        pagination: pagination
+      };
     } catch (err) {
       // Catch any unexpected errors - log to console only
       console.error(`Failed to fetch ${type} jobs:`, err);
-      return [];
+      return {
+        jobs: [],
+        pagination: {
+          page: 1,
+          pageSize: pageSize,
+          total: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrevious: false
+        }
+      };
     }
   },
 
@@ -113,6 +164,7 @@ export const historyAPI = {
         console.log(`No cancelled job details found for job ${jobNo}:`, response?.message || 'Unknown error');
         return null;
       }
+      console.log('cancelled job details:', response);
       
       return response.result;
     } catch (err) {
