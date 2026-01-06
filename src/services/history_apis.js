@@ -1,5 +1,5 @@
 import { galloInstance } from './galloInstance';
-import { formatTime12Hour } from '@/lib/utils';
+import { formatTime12Hour, downloadFile } from '@/lib/utils';
 
 const mapJobToHistory = (job) => {
   const jobDate = new Date(job.job_date);
@@ -175,101 +175,18 @@ export const historyAPI = {
 
   
   downloadVideo: async (filePath, fileName) => {
-    try {
-      // Get the access token for authentication
-      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-      const API_BASE_URL = 'http://127.0.0.1:8000';
-      
-      // Construct the full download URL
-      const downloadUrl = `${API_BASE_URL}/${filePath}`;
-      
-      // Fetch the file with authentication
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to download file: ${response.statusText}`);
-      }
-      
-      // Get the blob data
-      const blob = await response.blob();
-      
-      // Create a download link and trigger download
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName || 'video.mp4';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Clean up the object URL
-      window.URL.revokeObjectURL(url);
-      
-      return true;
-    } catch (err) {
-      console.error('Failed to download video:', err);
-      throw err;
-    }
+    const API_BASE_URL = 'http://127.0.0.1:8000';
+    const downloadUrl = `${API_BASE_URL}/${filePath}`;
+    return downloadFile(downloadUrl, fileName || 'video.mp4');
   },
 
   // Download all videos merged into one file
   // Backend endpoint: GET /jobs/get/{job_no}/completed_details?download_all=true
   // Returns FileResponse (merged video file)
   downloadAllVideos: async (jobNo) => {
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-      const API_BASE_URL = 'http://127.0.0.1:8000';
-      
-      // Construct the download URL with download_all=true parameter
-      const downloadUrl = `${API_BASE_URL}/jobs/get/${jobNo}/completed_details?download_all=true`;
-      
-      // Fetch the merged video file with authentication
-      const response = await fetch(downloadUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to download merged video: ${response.statusText}`);
-      }
-      
-      // Get the blob data
-      const blob = await response.blob();
-      
-      // Get filename from Content-Disposition header or use default
-      const contentDisposition = response.headers.get('content-disposition');
-      let fileName = 'all_videos_merged.mp4';
-      if (contentDisposition) {
-        const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (fileNameMatch && fileNameMatch[1]) {
-          fileName = fileNameMatch[1].replace(/['"]/g, '');
-        }
-      }
-      
-      // Create a download link and trigger download
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Clean up the object URL
-      window.URL.revokeObjectURL(url);
-      
-      return true;
-    } catch (err) {
-      console.error('Failed to download all videos:', err);
-      throw err;
-    }
+    const API_BASE_URL = 'http://127.0.0.1:8000';
+    const downloadUrl = `${API_BASE_URL}/jobs/get/${jobNo}/completed_details?download_all=true`;
+    return downloadFile(downloadUrl, 'all_videos_merged.mp4');
   },
 };
 

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import TimeInput from '@/components/task_details/task/TimeInput';
 import AddActionButton from '@/components/task_details/task/AddActionButton';
 import { Trash2, Edit3, ChevronDown, ChevronUp, Clock, Download } from 'lucide-react';
+import { witnessesAPI } from '@/services/witnesses_apis';
 
 export default function WitnessManagement({
     witnesses,
@@ -25,15 +26,43 @@ export default function WitnessManagement({
     onCancelWitnesses,
     onSaveWitness,
     onCancelWitness,
-    toast
+    handleCancelWitness,
+    toast,
+    jobId
 }) {
     const [pendingRename, setPendingRename] = useState({});
     const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record', witnessId, recordId }
     const [templateOpen, setTemplateOpen] = useState({});
+    const [downloadingCompleteVideo, setDownloadingCompleteVideo] = useState({}); // Track downloading state per witness: { witnessId: boolean }
     const handleCancel = onCancelWitnesses || (() => {});
     const handleSave = onSaveWitnesses || (() => {});
     const handleSaveSingle = onSaveWitness || (() => {});
     const handleCancelSingle = onCancelWitness || (() => {});
+
+    const handleDownloadCompleteVideo = async (e, witnessId, witnessName) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!jobId) {
+            toast?.error?.('Job ID not available');
+            return;
+        }
+        if (!witnessId) {
+            toast?.error?.('Witness ID not available');
+            return;
+        }
+        try {
+            setDownloadingCompleteVideo((prev) => ({ ...prev, [witnessId]: true }));
+            await witnessesAPI.downloadWitnessesCompleteVideo(Number(jobId), Number(witnessId), witnessName);
+            // Wait a bit to ensure the browser download dialog appears before showing success message
+            await new Promise(resolve => setTimeout(resolve, 300));
+            toast?.success?.('Complete video downloaded successfully');
+        } catch (err) {
+            console.error('Failed to download complete video:', err);
+            toast?.error?.(err?.message || 'Failed to download complete video. Please try again.');
+        } finally {
+            setDownloadingCompleteVideo((prev) => ({ ...prev, [witnessId]: false }));
+        }
+    };
 
     const notifyError = (message) => {
         if (toast?.error) toast.error(message);
@@ -48,7 +77,12 @@ export default function WitnessManagement({
     const formatDate = (iso) => {
         if (!iso) return '';
         try {
-            return new Date(iso).toISOString().slice(0, 10);
+            const date = new Date(iso);
+            // Format as "YYYY-MM-DD HH:MM"
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
         } catch {
             return '';
         }
@@ -87,13 +121,32 @@ export default function WitnessManagement({
         for (let idx = 0; idx < records.length; idx++) {
             const r = records[idx] || {};
             const partLabel = `${witnessName} - Part ${idx + 1}`;
-            if (!(r.startTime ?? '').toString().trim()) {
-                notifyError(`${partLabel}: Start Time is required`);
+            
+            // Skip records marked for deletion
+            if (r._markedForDeletion) continue;
+            
+            // Check if video exists - must be truthy and have at least one of: file, name, or filePath
+            const hasVideo = !!(r.video && (r.video.file || r.video.name || r.video.filePath));
+            const startTime = (r.startTime ?? '').toString().trim();
+            const endTime = (r.endTime ?? '').toString().trim();
+            const hasTimes = !!(startTime && endTime && startTime !== '--:--' && endTime !== '--:--');
+            
+            // If record has no video and no times, it's an empty record - prevent saving
+            if (!hasVideo && !hasTimes) {
+                notifyError(`${partLabel}: Either add a video with times, or remove this record`);
                 return false;
             }
-            if (!(r.endTime ?? '').toString().trim()) {
-                notifyError(`${partLabel}: End Time is required`);
-                return false;
+            
+            // If video exists, times are required (and must not be placeholder)
+            if (hasVideo) {
+                if (!startTime || startTime === '--:--') {
+                    notifyError(`${partLabel}: Start Time is required when video is added`);
+                    return false;
+                }
+                if (!endTime || endTime === '--:--') {
+                    notifyError(`${partLabel}: End Time is required when video is added`);
+                    return false;
+                }
             }
         }
         return true;
@@ -199,7 +252,11 @@ export default function WitnessManagement({
                         <div key={witness.id} className="border border-gray-300 rounded-lg overflow-hidden bg-white">
                             <div
                                 className="px-4 py-3 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
-                                onClick={() => {
+                                onClick={(e) => {
+                                    // Ignore clicks on buttons and interactive elements
+                                    if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) {
+                                        return;
+                                    }
                                     const next = expandedWitness === witness.id ? null : witness.id;
                                     setExpandedWitness(next);
                                     if (next) {
@@ -290,13 +347,19 @@ export default function WitnessManagement({
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
+                                                    e.preventDefault();
                                                     e.stopPropagation();
-                                                    toast?.info?.('Download complete video is not available yet.');
+                                                    handleDownloadCompleteVideo(e, witness.id, witness.name);
                                                 }}
-                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50"
+                                                onMouseDown={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                }}
+                                                disabled={downloadingCompleteVideo[witness.id]}
+                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 <Download className="w-4 h-4 text-gray-500" />
-                                                Download complete video
+                                                {downloadingCompleteVideo[witness.id] ? 'Downloading...' : 'Download complete video'}
                                             </button>
                                         );
                                     })()}
@@ -496,6 +559,10 @@ export default function WitnessManagement({
                                         <button
                                             type="button"
                                             onClick={() => {
+                                                // Restore deleted videos on cancel
+                                                if (handleCancelWitness) {
+                                                    handleCancelWitness(witness.id);
+                                                }
                                                 collapseTemplate(witness.id);
                                                 handleCancelSingle(witness.id);
                                             }}

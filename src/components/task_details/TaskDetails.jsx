@@ -68,7 +68,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         handleUploadVideo,
         handleDeleteRecord,
         handleUpdateTemplate,
-        handleSaveWitness
+        handleSaveWitness,
+        handleCancelWitness
     } = useWitnessManagement(witnessesData, toast);
     
     // Use custom hook for attorney management (must be after toast initialization)
@@ -562,10 +563,12 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleUpdateRecord={handleUpdateRecord}
                                                 handleUploadVideo={handleUploadVideo}
                                                 handleDeleteRecord={handleDeleteRecord}
+                                                handleCancelWitness={handleCancelWitness}
                                                 handleUpdateTemplate={handleUpdateTemplate}
                                                 handleRenameWitness={handleRenameWitness}
                                                 toast={toast}
                                                 onSaveWitness={handleSaveWitness}
+                                                jobId={selectedJobId || params?.id}
                                             />
                                         )}
                                         {step.number === 3 && (

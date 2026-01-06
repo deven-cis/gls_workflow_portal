@@ -162,6 +162,61 @@ export const validateEquipmentTime = (equipmentInfo) => {
   return { isValid: true, errors };
 };
 
+/**
+ * Shared utility function to download a file from the API
+ * @param {string} downloadUrl - Full URL to download from
+ * @param {string} defaultFileName - Default filename if not found in headers
+ * @returns {Promise<boolean>} True if download succeeded
+ */
+export const downloadFile = async (downloadUrl, defaultFileName = 'download.mp4') => {
+  try {
+    // Get the access token for authentication
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    
+    // Fetch the file with authentication
+    const response = await fetch(downloadUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to download file: ${response.statusText}`);
+    }
+    
+    // Get the blob data
+    const blob = await response.blob();
+    
+    // Get filename from Content-Disposition header or use default
+    const contentDisposition = response.headers.get('content-disposition');
+    let fileName = defaultFileName;
+    if (contentDisposition) {
+      const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (fileNameMatch && fileNameMatch[1]) {
+        fileName = fileNameMatch[1].replace(/['"]/g, '');
+      }
+    }
+    
+    // Create a download link and trigger download
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Clean up the object URL
+    window.URL.revokeObjectURL(url);
+    
+    return true;
+  } catch (err) {
+    console.error('Failed to download file:', err);
+    throw err;
+  }
+};
+
 export default {
   createAttorneySection,
   getInitials,
@@ -170,5 +225,6 @@ export default {
   validateWitnesses,
   validateAttorneys,
   validateBillings,
-  validateEquipmentTime
+  validateEquipmentTime,
+  downloadFile
 };

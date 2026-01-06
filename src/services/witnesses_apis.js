@@ -3,6 +3,7 @@ const GALLo_URL = 'http://127.0.0.1:8000';
 const API_BASE_URL = GALLo_URL;
 
 import { galloInstance } from './galloInstance';
+import { downloadFile } from '@/lib/utils';
 export const witnessesAPI = {
     getWitness: async (witnessId) => {
         const response = await galloInstance(`/witnesses/get/${witnessId}`);
@@ -92,5 +93,23 @@ export const witnessesAPI = {
             throw new Error(message);
         }
         return response?.result ?? response;
+    },
+
+    /**
+     * Download complete merged video for a specific witness
+     * Backend endpoint: GET /witnesses/{job_no}/download_witnesses_complete_video?witness_id={witness_id}&download_all=true
+     * Returns FileResponse (merged video file)
+     * @param {number} jobNo - Job number
+     * @param {number} witnessId - Witness ID
+     * @param {string} [witnessName] - Optional witness name for filename
+     */
+    downloadWitnessesCompleteVideo: async (jobNo, witnessId, witnessName = null) => {
+        const downloadUrl = `${API_BASE_URL}/witnesses/${jobNo}/download_witnesses_complete_video?witness_id=${witnessId}&download_all=true`;
+        // Generate dynamic filename: if witness name provided, use it; otherwise use job number and witness ID
+        const sanitizedName = witnessName 
+            ? witnessName.replace(/[^a-zA-Z0-9_-]/g, '_').trim()
+            : `job_${jobNo}_witness_${witnessId}`;
+        const defaultFileName = `${sanitizedName}_complete_video.mp4`;
+        return downloadFile(downloadUrl, defaultFileName);
     },
 };
