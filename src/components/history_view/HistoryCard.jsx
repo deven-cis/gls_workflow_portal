@@ -85,7 +85,7 @@ const HistoryCard = ({ item, onClick, activeTab }) => {
                                         className="w-full flex items-center gap-2 text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
                                     >
                                         <Pencil size={16} />
-                                        Edit
+                                        View
                                     </button>
                                 </div>
                             )}

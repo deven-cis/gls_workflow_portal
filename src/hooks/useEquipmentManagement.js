@@ -324,7 +324,7 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
             setEquipmentHasBeenSaved(true);
         } catch (err) {
             console.error('Failed to save equipment time:', err);
-            toast.error(equipmentTimeId ? 'Failed to update equipment time' : 'Failed to save equipment time');
+            toast.error('Failed to save equipment time');
         }
     }, [equipmentInfo, pendingEquipmentChanges, equipmentTimeId, searchParams, params, toast]);
 
@@ -364,13 +364,13 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
                 
                 // Check backend response
                 if (response?.success === false) {
-                    toast.error(response?.message || 'Failed to delete equipment time');
+                    toast.error('Failed to delete equipment time');
                     return;
                 }
                 
                 // Success response from backend
                 if (response?.success === true) {
-                    toast.success(response?.message || 'Equipment time deleted successfully');
+                    toast.success('Equipment time deleted successfully');
                 }
             } else {
                 // No equipment time ID means it was never saved, just reset local state
@@ -393,8 +393,7 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
             setEquipmentTimeId(null);
         } catch (err) {
             console.error('Failed to delete equipment time:', err);
-            const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete equipment time';
-            toast.error(errorMessage);
+            toast.error('Failed to delete equipment time');
         }
     }, [equipmentTimeId, toast]);
 

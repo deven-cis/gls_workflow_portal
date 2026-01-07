@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { MapPin, Clock, X, Download, Video, Pencil } from "lucide-react";
 import { historyAPI } from '@/services/history_apis';
 import { useToast } from '@/contexts/ToastContext';
+import { formatFileSizeMB } from '@/lib/utils';
 
 // Read-only job details modal for history view
 export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
@@ -68,12 +69,6 @@ export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-gray-900">Job Details</h2>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-              >
-                <Pencil size={16} />
-              </button>
               <button
                 type="button"
                 onClick={onClose}
@@ -216,7 +211,7 @@ export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
                             {recording.fileName || 'N/A'}
                           </p>
                           <p className="text-gray-500 text-xs">
-                            {recording.size || 'N/A'}
+                            {formatFileSizeMB(recording.size)}
                           </p>
                         </div>
                       </div>

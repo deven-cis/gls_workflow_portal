@@ -105,7 +105,32 @@ const StatusBadge = ({ status }) => {
     return null;
 };
 
-export default function TaskCard({ task, isHighlighted = false, isSelected = false, onSelect, isUpcoming = false, onCancelJob }) {
+// Video Pending badge component with hover tooltip
+const VideoPendingBadge = ({ isActive }) => {
+    const [showTooltip, setShowTooltip] = useState(false);
+    // Static data for hover tooltip
+    const videoPendingData = "Tom 1/5, Joms 2/5";
+    
+    return (
+        <div 
+            className="relative"
+            onMouseEnter={() => setShowTooltip(true)}
+            onMouseLeave={() => setShowTooltip(false)}
+        >
+            <span className="px-3 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-2xl cursor-pointer hover:bg-red-200 transition-colors">
+                Video Pending
+            </span>
+            {showTooltip && (
+                <div className="absolute right-0 bottom-full mb-2 z-50 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg whitespace-nowrap">
+                    {videoPendingData}
+                    <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default function TaskCard({ task, isHighlighted = false, isSelected = false, onSelect, isUpcoming = false, onCancelJob, showVideoPending = false }) {
     const router = useRouter();
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
@@ -229,6 +254,9 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                     {/* Status & Actions */}
                     <div className="flex flex-col items-end gap-1">
                         <div className="flex items-center gap-3">
+                            {!isUpcoming && showVideoPending && SESSION_NOT_STARTED_STATUSES.has(task.status) && (
+                                <VideoPendingBadge isActive={isActive} />
+                            )}
                             {!isUpcoming && task.status && <StatusBadge status={task.status} />}
                             {task.uploadProgress && (
                                 <span className={`text-xs ${styles.uploadBadge} px-2 py-1 rounded-2xl`}>

@@ -17,12 +17,6 @@ export default function JobCancelDetails({ isOpen, onClose, jobDetails }) {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-              >
-                <Pencil size={16} />
-              </button>
-              <button
-                type="button"
                 onClick={onClose}
                 className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
               >

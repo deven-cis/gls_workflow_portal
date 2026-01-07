@@ -32,6 +32,33 @@ const getTimeRemaining = (deadline) => {
   return { hours, minutes };
 };
 
+// Build navigation URL for an event based on its computed_status
+// - If status is "Cancelled"  -> history cancelled tab
+// - If status is "Completed"  -> history completed tab (default)
+// - Otherwise                 -> task details page (previous behaviour)
+const buildEventLink = (event) => {
+  console.log('event---------------------------:', event);
+  if (!event) return null;
+
+  const status = (event.computedStatus || '').toString().toLowerCase();
+  console.log('status:', status);
+
+  if (status === 'cancelled') {
+    return '/dashboard/history?tab=cancelled';
+  }
+
+  if (status === 'completed') {
+    return '/dashboard/history';
+  }
+
+  // Fallback: original behaviour – navigate to task details when we have IDs
+  if (event.caseId && event.id) {
+    return `/dashboard/task-details/${event.caseId}?jobId=${event.id}`;
+  }
+
+  return null;
+};
+
 // Normalize date to midnight in local timezone for accurate comparison
 const normalizeDate = (date) => {
   if (!date) return null;
@@ -54,17 +81,19 @@ const isSameDate = (date1, date2) => {
 
 // Reusable EventCard Component
 function EventCard({ event, formatTime, getTimeRemaining, variant = 'default', onClick, onNavigate }) {
+  console.log('event:', event);
   const isPending = event.status === 'pending';
   const timeRemaining = event.deadline ? getTimeRemaining(event.deadline) : null;
   const isCompact = variant === 'compact';
   
-  // Build task details URL: /dashboard/task-details/{caseId}?jobId={jobNo}
-  const hasValidLink = event.caseId && event.id;
+  // Build navigation URL based on event status / IDs
+  const linkUrl = buildEventLink(event);
+  const hasValidLink = !!linkUrl;
   
   const handleLinkClick = (e) => {
     e.stopPropagation(); // Prevent triggering the card's onClick
     if (hasValidLink && onNavigate) {
-      onNavigate(`/dashboard/task-details/${event.caseId}?jobId=${event.id}`);
+      onNavigate(linkUrl);
     }
   };
 
@@ -742,11 +771,11 @@ function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTim
     return date.toLocaleDateString('en-US', options);
   };
   
-  // Handle navigation to task details
+  // Handle navigation based on event status / IDs (reuse same logic as EventCard)
   const handleViewDetails = (event) => {
-    if (event.caseId && event.id && onNavigate) {
-      onNavigate(`/dashboard/task-details/${event.caseId}?jobId=${event.id}`);
-    }
+    if (!onNavigate) return;
+    const url = buildEventLink(event);
+    if (url) onNavigate(url);
   };
 
   return (

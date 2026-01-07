@@ -285,7 +285,7 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
             setBillingHasBeenSaved(true);
         } catch (err) {
             console.error('Failed to save billing information:', err);
-            toast.error(billingId ? 'Failed to update billing information' : 'Failed to save billing information');
+            toast.error('Failed to save billing information');
         }
     }, [billingInfo, pendingBillingChanges, billingId, searchParams, params, toast]);
 
@@ -325,13 +325,13 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
                 
                 // Check backend response
                 if (response?.success === false) {
-                    toast.error(response?.message || 'Failed to delete billing information');
+                    toast.error('Failed to delete billing information');
                     return;
                 }
                 
                 // Success response from backend
                 if (response?.success === true) {
-                    toast.success(response?.message || 'Billing information deleted successfully');
+                    toast.success('Billing information deleted successfully');
                 }
             } else {
                 // No billing ID means it was never saved, just reset local state
@@ -354,8 +354,7 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
             setBillingId(null);
         } catch (err) {
             console.error('Failed to delete billing information:', err);
-            const errorMessage = err?.response?.data?.message || err?.message || 'Failed to delete billing information';
-            toast.error(errorMessage);
+            toast.error('Failed to delete billing information');
         }
     }, [billingId, toast]);
 

@@ -517,13 +517,14 @@ export default function MyTasks() {
                                 loadingState={loadingPending}
                                 emptyMessage="Pending jobs not available"
                             >
-                                {pendingTasks.map((task) => (
+                                {pendingTasks.map((task, index) => (
                                     <TaskCard
                                         key={task.id}
                                         task={task}
                                         isSelected={selectedTaskId === task.id}
                                         onSelect={setSelectedTaskId}
                                         onCancelJob={handleCancelJob}
+                                        showVideoPending={index === 0}
                                     />
                                 ))}
                             </ScrollableSection>

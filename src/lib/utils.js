@@ -217,6 +217,50 @@ export const downloadFile = async (downloadUrl, defaultFileName = 'download.mp4'
   }
 };
 
+/**
+ * Fetch video file size from file path using HEAD request
+ * @param {string} filePath - Relative or absolute file path
+ * @param {string} baseUrl - Base URL for the API (default: http://127.0.0.1:8000)
+ * @returns {Promise<number|null>} File size in bytes, or null if unavailable
+ */
+export const fetchVideoFileSize = async (filePath, baseUrl = 'http://127.0.0.1:8000') => {
+  if (!filePath || typeof window === 'undefined') return null;
+  
+  try {
+    const videoUrl = filePath.startsWith('http') ? filePath : `${baseUrl}/${filePath}`;
+    const token = localStorage.getItem('access_token');
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch(videoUrl, { 
+      method: 'HEAD', // Use HEAD to get headers without downloading the file
+      headers 
+    });
+    
+    if (!response.ok) return null;
+    
+    const contentLength = response.headers.get('content-length');
+    return contentLength ? parseInt(contentLength, 10) : null;
+  } catch (error) {
+    console.error('Failed to fetch video file size:', error);
+    return null;
+  }
+};
+
+/**
+ * Format bytes to MB string
+ * @param {number|null|string} bytes - File size in bytes
+ * @returns {string} Formatted size string (e.g., "3.5MB" or "N/A")
+ */
+export const formatFileSizeMB = (bytes) => {
+  if (bytes == null || bytes === 'N/A' || bytes === '') return 'N/A';
+  if (typeof bytes === 'string') return bytes; // Already formatted
+  if (typeof bytes !== 'number' || isNaN(bytes) || bytes <= 0) return 'N/A';
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+};
+
 export default {
   createAttorneySection,
   getInitials,
@@ -226,5 +270,7 @@ export default {
   validateAttorneys,
   validateBillings,
   validateEquipmentTime,
-  downloadFile
+  downloadFile,
+  fetchVideoFileSize,
+  formatFileSizeMB
 };

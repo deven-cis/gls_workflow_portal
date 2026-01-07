@@ -9,6 +9,7 @@ import HistoryDateRangePicker from '@/components/history_view/DateRangePicker';
 import JobCompletedDetails from '@/components/history_view/JobCompletedDetails';
 import JobCancelDetails from '@/components/history_view/JobCancelDetails';
 import HistoryCard from '@/components/history_view/HistoryCard';
+import { fetchVideoFileSize } from '@/lib/utils';
 
 
 export default function HistoryView() {
@@ -210,21 +211,29 @@ export default function HistoryView() {
                 const attorneys = jobDetailsData.attorneys || [];
                 const witnesses = jobDetailsData.witnesses || [];
                 
-                // Flatten witness videos into recordings array
-                const recordings = [];
+                // Flatten witness videos into recordings array - only include videos with file_name and file_path
+                const recordingsPromises = [];
                 witnesses.forEach((witness) => {
                     const witnessVideos = witness.witness_videos || [];
                     witnessVideos.forEach((video) => {
-                        recordings.push({
-                            name: witness.witness_name,
-                            fileName: video.file_name,
-                            filePath: video.file_path,
-                            startTime: video.start_time,
-                            endTime: video.end_time,
-                            size: 'N/A' // Size not provided in API, could be calculated from file if needed
-                        });
+                        // Only process videos that have both file_name and file_path
+                        if (video.file_name && video.file_path) {
+                            recordingsPromises.push(
+                                fetchVideoFileSize(video.file_path).then(size => ({
+                                    name: witness.witness_name,
+                                    fileName: video.file_name,
+                                    filePath: video.file_path,
+                                    startTime: video.start_time,
+                                    endTime: video.end_time,
+                                    size: size // Size in bytes, will be formatted in display
+                                }))
+                            );
+                        }
                     });
                 });
+                
+                // Wait for all size fetches to complete
+                const recordings = await Promise.all(recordingsPromises);
                 
                 const jobDetails = {
                     jobNo: jobNo, // Add job number for download all functionality
@@ -336,6 +345,8 @@ export default function HistoryView() {
 
     const historyData = activeTab === 'completed' ? completedJobs : cancelledJobs;
     const hasHistory = historyData && historyData.length > 0;
+    // Only show date filter if the active tab has data
+    const showDateFilter = hasHistory;
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -366,26 +377,29 @@ export default function HistoryView() {
                         </button>
                     </div>
 
-                    <div className="relative" ref={calendarRef}>
-                        <button
-                            onClick={() => setShowCalendar(!showCalendar)}
-                            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium text-sm md:text-base"
-                        >
-                            {formatDateRange()}
-                            <ChevronDown size={16} />
-                        </button>
+                    {/* Only show date filter if the active tab has data */}
+                    {showDateFilter && (
+                        <div className="relative" ref={calendarRef}>
+                            <button
+                                onClick={() => setShowCalendar(!showCalendar)}
+                                className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium text-sm md:text-base"
+                            >
+                                {formatDateRange()}
+                                <ChevronDown size={16} />
+                            </button>
 
-                        {showCalendar && (
-                            <div className="absolute right-0 top-full mt-2 z-50 w-[340px] md:w-[360px]">
-                                <HistoryDateRangePicker
-                                    startDate={startDate}
-                                    endDate={endDate}
-                                    onDateChange={handleDateChange}
-                                    onClose={() => setShowCalendar(false)}
-                                />
-                            </div>
-                        )}
-                    </div>
+                            {showCalendar && (
+                                <div className="absolute right-0 top-full mt-2 z-50 w-[340px] md:w-[360px]">
+                                    <HistoryDateRangePicker
+                                        startDate={startDate}
+                                        endDate={endDate}
+                                        onDateChange={handleDateChange}
+                                        onClose={() => setShowCalendar(false)}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {loading ? (

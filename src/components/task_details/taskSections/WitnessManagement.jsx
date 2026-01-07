@@ -145,7 +145,7 @@ export default function WitnessManagement({
                 }
                 if (!endTime || endTime === '--:--') {
                     notifyError(`${partLabel}: End Time is required when video is added`);
-                    return false;
+                return false;
                 }
             }
         }

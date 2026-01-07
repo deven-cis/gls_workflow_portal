@@ -365,18 +365,20 @@ export const useWitnessManagement = (witnessesData, toast) => {
     const handleUploadVideo = useCallback(async (witnessId, recordId, file) => {
         // allow removing selected video
         if (!file) {
-            // File trash should NOT remove the whole Part section.
-            // When deleting just the video file (not the whole record), we need to:
-            // 1. Keep the backendId so backend can UPDATE existing record (not create new)
-            // 2. Store original video for potential restore on cancel
-            // 3. Clear the video file so user can re-upload a replacement
+            // Video upload trash icon: Only remove the video file, NOT the entire record
+            // This should UPDATE the record to set file_name and file_path to null
+            // Keep the backendId so backend can UPDATE the existing record (not delete it)
             setWitnessRecords((prev) => {
                 const records = prev[witnessId] || [];
                 const record = records.find((r) => r.id === recordId);
                 const backendId = record?.backendId;
                 const originalVideo = record?.video; // Store original video for restore
-                // IMPORTANT: Keep backendId so backend can UPDATE existing record instead of creating new one
-                // Only clear the video file, not the backendId
+                
+                // IMPORTANT: Do NOT mark for deletion here
+                // Just clear the video file - backend will UPDATE the record (set file_name/file_path to null)
+                // Keep backendId so backend knows which record to update
+                
+                // Clear the video file and store original for restore
                 return {
                     ...prev,
                     [witnessId]: records.map((r) =>
@@ -488,21 +490,43 @@ export const useWitnessManagement = (witnessesData, toast) => {
             }
 
             const files = [];
+            const deletedIds = new Set(deletedWitnessVideoIds[witnessId] || []);
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/5ea65233-445c-4c1f-bbb6-e6b13c7b0dec',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWitnessManagement.js:492',message:'handleSaveWitness: Starting payload construction',data:{witnessId,recordsCount:records?.length,deletedIds:Array.from(deletedIds)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
             const videos = (records || [])
-                .filter((r) => !r._markedForDeletion) // Filter out records marked for deletion
-                .map((r) => {
+                .filter((r) => {
+                    // Filter out records marked for deletion (entire record deletion)
+                    if (r._markedForDeletion) return false;
+                    // Filter out records that are in deletedWitnessVideoIds (entire record deletion)
+                    // These will be handled by the deletes array
+                    if (r.backendId && deletedIds.has(r.backendId)) return false;
+                    return true;
+                })
+                .map((r, idx) => {
                 const item = {
                     id: r?.backendId ?? r?.videoId ?? r?.id, // if backend id exists, use it; otherwise backend may treat as new
                     start_time: r?.startTime ?? '',
                     end_time: r?.endTime ?? '',
                 };
 
-                // Only include file_index if user selected a file
+                // Detect if video was explicitly removed by user (trash icon clicked)
+                // Video is removed if: video is null AND we have _originalVideo (stored when trash was clicked)
+                const videoRemoved = !r?.video && r?._originalVideo && r?.backendId;
+                
+                // Only include file_index if user selected a NEW file to upload
                 const f = r?.video?.file;
                 if (f) {
+                    // New file to upload
                     item.file_index = files.length;
                     files.push(f);
+                } else if (videoRemoved) {
+                    // Video was explicitly removed by user (trash icon) - signal backend to clear file
+                    // Backend should check: if file_index is None/null and record exists, clear file_name and file_path
+                    item.file_index = null; // Explicitly set to null to signal clearing
                 } else {
+                    // No file_index means: update existing record without changing file
+                    // This is for records that have video from backend (filePath) but no new file to upload
                     delete item.file_index;
                 }
 
@@ -511,16 +535,39 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 if (!r?.backendId && !r?.videoId) {
                     delete item.id;
                 }
-                // Filter out empty records: no video, no times, no backend ID
+                
+                // With replace_videos: true, we MUST include all records we want to keep
+                // But we need to be careful not to accidentally clear files
                 const hasVideo = !!(r?.video?.file || r?.video?.name || r?.video?.filePath);
                 const hasTimes = !!(String(item.start_time || '').trim() && String(item.end_time || '').trim());
                 const hasFileIndex = typeof item.file_index === 'number';
                 const hasBackendId = !!item.id;
-                // Skip empty records (no video, no times, no backend ID)
-                if (!hasBackendId && !hasFileIndex && !hasTimes && !hasVideo) {
-                    return null;
+                const fileIndexIsNull = item.file_index === null; // Explicitly set to null (video removed)
+                const hasExistingVideoFromBackend = !!(r?.video?.filePath || r?.video?.name) && !r?.video?.file;
+                
+                // Include record if:
+                // 1. Has new file to upload
+                // 2. Video was explicitly removed (file_index: null)
+                // 3. Is a new record with times
+                // 4. Has backendId (existing record) - MUST include to prevent replace_videos from archiving it
+                //    BUT: Only set file_index to null if video was explicitly removed
+                //    For existing videos from backend, don't set file_index at all (preserve file)
+                const finalItem = { ...item };
+                if (hasFileIndex || fileIndexIsNull || !hasBackendId) {
+                    // Has changes or is new record
+                    return finalItem;
+                } else if (hasBackendId) {
+                    // Existing record - include it to prevent replace_videos from archiving
+                    // But make sure file_index is not set (not null, just not present)
+                    // This tells backend: update times but don't touch the file
+                    if (finalItem.file_index === null) {
+                        // This shouldn't happen here, but just in case
+                        delete finalItem.file_index;
+                    }
+                    return finalItem;
                 }
-                return item;
+                // Skip truly empty records
+                return null;
             })
                 .filter(Boolean);
             const deletes = (deletedWitnessVideoIds[witnessId] || []).map((id) => ({
@@ -571,11 +618,20 @@ export const useWitnessManagement = (witnessesData, toast) => {
 
             // Important: refresh witness videos from backend so newly-created videos get real IDs
             // (prevents duplicate creates on subsequent saves).
+            // First, try to use the response from save-all (which already contains updated witness data)
+            // Fall back to separate API call if needed
             try {
-                const list = await witnessesAPI.getJobWitnesses(jobId);
-                const raw = (Array.isArray(list) ? list : []).find((w) => (w.id ?? w.witness_id) === witnessId);
+                // Try to use the saved response directly (backend returns updated witness with videos)
+                let raw = saved;
+                // If saved response doesn't have the witness data we need, fetch from API
+                if (!raw || (!raw.witness_videos && !raw.witness_vid && !raw.videos)) {
+                    const list = await witnessesAPI.getJobWitnesses(jobId);
+                    raw = (Array.isArray(list) ? list : []).find((w) => (w.id ?? w.witness_id) === witnessId);
+                }
+                
                 if (raw) {
-                    const vids = raw.witness_vid ?? raw.witness_videos ?? raw.videos ?? [];
+                    // Backend returns witness_videos (serialization alias) from WitnessSchema
+                    const vids = raw.witness_videos ?? raw.witness_vid ?? raw.videos ?? [];
                     // Process videos and fetch metadata
                     const processedVideos = await Promise.all(
                         (Array.isArray(vids) ? vids : []).map(async (v, idx) => {
@@ -616,19 +672,68 @@ export const useWitnessManagement = (witnessesData, toast) => {
                     setWitnessRecords((prev) => {
                         const next = { ...prev };
                         const existingRecords = prev[witnessId] || [];
-                        // Preserve _originalVideo and _originalBackendId from existing records when merging
-                        const existingMap = new Map();
-                        const deletedRecordsWithOriginalVideo = [];
+                        
+                        // Create maps for matching:
+                        // 1. By backendId (for existing videos that were updated)
+                        const existingByBackendId = new Map();
+                        // 2. By startTime + endTime (for new videos that were just created)
+                        const existingByTimeKey = new Map();
+                        // 3. Track which existing records have been matched
+                        const matchedExistingIds = new Set();
+                        
+                        // Helper to normalize time format for matching (HH:MM:SS -> HH:MM, or keep HH:MM)
+                        const normalizeTimeForMatching = (time) => {
+                            if (!time) return '';
+                            const str = String(time).trim();
+                            // If format is HH:MM:SS, extract HH:MM; if HH:MM, keep as is
+                            return str.length >= 5 ? str.slice(0, 5) : str;
+                        };
+                        
                         existingRecords.forEach((r) => {
-                            const key = r.backendId ?? r.id;
-                            if (key) {
-                                existingMap.set(key, r);
+                            // Map by backendId for existing videos
+                            if (r.backendId) {
+                                existingByBackendId.set(r.backendId, r);
+                            }
+                            // Map by time combination for new videos (without backendId)
+                            if (!r.backendId && r.startTime && r.endTime) {
+                                const startNorm = normalizeTimeForMatching(r.startTime);
+                                const endNorm = normalizeTimeForMatching(r.endTime);
+                                if (startNorm && endNorm) {
+                                    const timeKey = `${startNorm}|${endNorm}`;
+                                    existingByTimeKey.set(timeKey, r);
+                                }
                             }
                         });
-                        // Merge processed videos with existing records, preserving _originalVideo for videos that still exist
-                        // (videos that were deleted and saved are not in processedVideos, so their _originalVideo is lost - this is correct)
+                        
+                        // Match processed videos from backend to existing records
+                        // This preserves order and matches new videos correctly
                         const mergedVideos = processedVideos.map((pv) => {
-                            const existing = existingMap.get(pv.backendId);
+                            let existing = null;
+                            
+                            // First, try to match by backendId (for existing videos)
+                            if (pv.backendId) {
+                                existing = existingByBackendId.get(pv.backendId);
+                                if (existing) {
+                                    matchedExistingIds.add(existing.id);
+                                }
+                            }
+                            
+                            // If not matched by backendId, try matching by time (for new videos)
+                            if (!existing && pv.startTime && pv.endTime) {
+                                const startNorm = normalizeTimeForMatching(pv.startTime);
+                                const endNorm = normalizeTimeForMatching(pv.endTime);
+                                if (startNorm && endNorm) {
+                                    const timeKey = `${startNorm}|${endNorm}`;
+                                    existing = existingByTimeKey.get(timeKey);
+                                    if (existing && !matchedExistingIds.has(existing.id)) {
+                                        matchedExistingIds.add(existing.id);
+                                    } else {
+                                        existing = null; // Already matched or doesn't match
+                                    }
+                                }
+                            }
+                            
+                            // If matched, preserve _originalVideo and _originalBackendId
                             if (existing && (existing._originalVideo || existing._originalBackendId)) {
                                 return {
                                     ...pv,
@@ -636,8 +741,13 @@ export const useWitnessManagement = (witnessesData, toast) => {
                                     _originalBackendId: existing._originalBackendId,
                                 };
                             }
+                            
+                            // Return the processed video as-is (new video or unmatched)
                             return pv;
                         });
+                        
+                        // Preserve order: use mergedVideos from backend, but maintain existing order where possible
+                        // The backend returns videos in a consistent order, so we use that
                         next[witnessId] = mergedVideos;
                         return next;
                     });
