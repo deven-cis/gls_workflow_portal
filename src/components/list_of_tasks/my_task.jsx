@@ -515,7 +515,7 @@ export default function MyTasks() {
                                 tasks={pendingTasks}
                                 pagination={pendingPagination}
                                 loadingState={loadingPending}
-                                emptyMessage="Pending jobs not available"
+                                emptyMessage="No pending jobs at the moment."
                             >
                                 {pendingTasks.map((task, index) => (
                                     <TaskCard
@@ -536,7 +536,7 @@ export default function MyTasks() {
                                 tasks={upcomingTasks}
                                 pagination={upcomingPagination}
                                 loadingState={loadingUpcoming}
-                                emptyMessage="Upcoming jobs not available"
+                                emptyMessage="No upcoming jobs at the moment."
                             >
                                 {upcomingTasks.map((task) => (
                                     <TaskCard

@@ -110,8 +110,8 @@ export default function Header() {
                 <div className="flex items-center gap-3">
                     <span className="text-sm text-gray-600">{dateStr}</span>
                     <span className="text-sm font-medium text-gray-900">{timeStr}</span>
-                    {/* If no profile photo, show placeholder icon (not initials) */}
-                    <AvatarMenu name={userName} avatarSrc={avatarSrc} fallback="icon" />
+                    {/* If no profile photo, show first letter of user name */}
+                    <AvatarMenu name={userName} avatarSrc={avatarSrc} fallback="initials" />
                 </div>
             </div>
         </header>

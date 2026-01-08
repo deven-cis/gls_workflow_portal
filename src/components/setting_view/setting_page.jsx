@@ -7,6 +7,7 @@ import { getUser, logout } from "@/lib/auth";
 import { useToast } from "@/contexts/ToastContext";
 import { userSettingsAPI } from "@/services/user_setting";
 import { resolveFileUrl } from "@/lib/config";
+import { getInitials } from "@/lib/utils";
 
 export default function SettingPage() {
   const router = useRouter();
@@ -31,6 +32,8 @@ export default function SettingPage() {
   });
   const [passwordError, setPasswordError] = useState("");
   const [oldPasswordError, setOldPasswordError] = useState("");
+  const [newPasswordError, setNewPasswordError] = useState("");
+  const [samePasswordError, setSamePasswordError] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [userId, setUserId] = useState(null);
 
@@ -110,6 +113,20 @@ export default function SettingPage() {
     });
   };
 
+  // Validate new password strength
+  const validateNewPassword = (password) => {
+    const errors = [];
+    
+    if (password.length < 8 || 
+        !/[a-z]/.test(password) || 
+        !/[0-9]/.test(password) || 
+        !/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      errors.push("Use 8+ chars with alphabet, number & symbol.");
+    }
+    
+    return errors;
+  };
+
   const handlePasswordChange = (e) => {
     const newData = {
       ...passwordData,
@@ -122,6 +139,31 @@ export default function SettingPage() {
       setOldPasswordError("");
     }
     
+    // Validate new password strength (when typing in newPassword OR confirmPassword)
+    if (e.target.name === "newPassword" || e.target.name === "confirmPassword") {
+      if (newData.newPassword) {
+        const validationErrors = validateNewPassword(newData.newPassword);
+        if (validationErrors.length > 0) {
+          setNewPasswordError(validationErrors[0]); // Show error message
+        } else {
+          setNewPasswordError("");
+        }
+      } else {
+        setNewPasswordError("");
+      }
+    }
+    
+    // Validate old password and new password are not the same
+    if (newData.oldPassword && newData.newPassword) {
+      if (newData.oldPassword === newData.newPassword) {
+        setSamePasswordError("New password must be different from old password");
+      } else {
+        setSamePasswordError("");
+      }
+    } else {
+      setSamePasswordError("");
+    }
+    
     // Validate passwords match
     if (newData.newPassword && newData.confirmPassword) {
       if (newData.newPassword !== newData.confirmPassword) {
@@ -129,7 +171,8 @@ export default function SettingPage() {
       } else {
         setPasswordError("");
       }
-    } else {
+    } else if (e.target.name === "confirmPassword" && !newData.confirmPassword) {
+      // Clear password error when confirm password is cleared
       setPasswordError("");
     }
   };
@@ -142,17 +185,63 @@ export default function SettingPage() {
   };
 
   const isPasswordFormValid = () => {
-    return (
-      passwordData.oldPassword.trim() !== "" &&
-      passwordData.newPassword.trim() !== "" &&
-      passwordData.confirmPassword.trim() !== "" &&
-      passwordData.newPassword === passwordData.confirmPassword &&
-      passwordError === ""
-    );
+    // Check if all fields are filled
+    if (!passwordData.oldPassword.trim() || !passwordData.newPassword.trim() || !passwordData.confirmPassword.trim()) {
+      return false;
+    }
+    
+    // Validate new password strength
+    const newPasswordValidationErrors = validateNewPassword(passwordData.newPassword);
+    if (newPasswordValidationErrors.length > 0) {
+      return false;
+    }
+    
+    // Check if old password and new password are the same
+    if (passwordData.oldPassword === passwordData.newPassword) {
+      return false;
+    }
+    
+    // Check if passwords match
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      return false;
+    }
+    
+    // All validations passed
+    return true;
   };
 
   const handleUpdatePassword = async () => {
-    if (!isPasswordFormValid()) {
+    // Validate all fields before proceeding
+    if (!passwordData.oldPassword.trim()) {
+      setOldPasswordError("Old password is required");
+      return;
+    }
+    
+    if (!passwordData.newPassword.trim()) {
+      setNewPasswordError("New password is required");
+      return;
+    }
+    
+    // Validate new password strength
+    const newPasswordValidationErrors = validateNewPassword(passwordData.newPassword);
+    if (newPasswordValidationErrors.length > 0) {
+      setNewPasswordError(newPasswordValidationErrors[0]);
+      return;
+    }
+    
+    // Check if old password and new password are the same
+    if (passwordData.oldPassword === passwordData.newPassword) {
+      setSamePasswordError("New password must be different from old password");
+      return;
+    }
+    
+    if (!passwordData.confirmPassword.trim()) {
+      setPasswordError("Please confirm your new password");
+      return;
+    }
+    
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError("New password and confirm password must match");
       return;
     }
 
@@ -164,6 +253,8 @@ export default function SettingPage() {
     setIsChangingPassword(true);
     setOldPasswordError("");
     setPasswordError("");
+    setNewPasswordError("");
+    setSamePasswordError("");
 
     try {
       await userSettingsAPI.changePassword(
@@ -180,6 +271,8 @@ export default function SettingPage() {
       setShowPasswords({ oldPassword: false, newPassword: false, confirmPassword: false });
       setPasswordError("");
       setOldPasswordError("");
+      setNewPasswordError("");
+      setSamePasswordError("");
       
     } catch (error) {
       const errorMessage = error?.message || "Failed to change password";
@@ -259,14 +352,10 @@ export default function SettingPage() {
                   />
                 </div>
               ) : (
-                <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
-                  <svg
-                    className="w-8 h-8 text-gray-400"
-                    fill="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                  </svg>
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                  <span className="text-2xl font-semibold text-white">
+                    {getInitials(formData.fullName || 'User')}
+                  </span>
                 </div>
               )}
             </div>
@@ -446,7 +535,7 @@ export default function SettingPage() {
                     value={passwordData.newPassword}
                     onChange={handlePasswordChange}
                     className={`w-full pl-10 pr-10 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-900 ${
-                      passwordError ? "border-red-500" : "border-gray-300"
+                      newPasswordError || passwordError || samePasswordError ? "border-red-500" : "border-gray-300"
                     }`}
                     autoComplete="new-password"
                   />
@@ -463,6 +552,12 @@ export default function SettingPage() {
                     )}
                   </button>
                 </div>
+                {newPasswordError && (
+                  <p className="mt-1 text-sm text-red-600">{newPasswordError}</p>
+                )}
+                {samePasswordError && (
+                  <p className="mt-1 text-sm text-red-600">{samePasswordError}</p>
+                )}
               </div>
 
               <div>
@@ -507,6 +602,8 @@ export default function SettingPage() {
                   setShowPasswords({ oldPassword: false, newPassword: false, confirmPassword: false });
                   setPasswordError("");
                   setOldPasswordError("");
+                  setNewPasswordError("");
+                  setSamePasswordError("");
                 }}
                 disabled={isChangingPassword}
                 className={`px-4 py-2 text-sm font-medium border border-gray-300 rounded-md transition-colors ${
