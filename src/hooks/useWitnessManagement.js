@@ -28,7 +28,9 @@ export const useWitnessManagement = (witnessesData, toast) => {
         try {
             // Construct full URL if filePath is relative
             const { API_BASE_URL } = await import('@/lib/config');
-            const videoUrl = filePath.startsWith('http') ? filePath : `${API_BASE_URL}/${filePath}`;
+            // Handle both absolute paths (starting with /) and relative paths
+            const normalizedPath = filePath.startsWith('/') ? filePath.slice(1) : filePath;
+            const videoUrl = filePath.startsWith('http') ? filePath : `${API_BASE_URL}/${normalizedPath}`;
             
             // Fetch video file with authentication headers (if available)
             const token = localStorage.getItem('access_token');
@@ -38,33 +40,68 @@ export const useWitnessManagement = (witnessesData, toast) => {
             }
             
             // Fetch video to get both size and duration
-            const videoResponse = await fetch(videoUrl, { headers });
-            if (!videoResponse.ok) {
+            // Use mode: 'cors' to handle CORS issues, and catch network errors gracefully
+            const videoResponse = await fetch(videoUrl, { 
+                headers,
+                mode: 'cors',
+                credentials: 'omit'
+            });
+            
+            // Check if response is actually a video (not HTML error page)
+            const contentType = videoResponse.headers.get('content-type') || '';
+            const isVideoContent = contentType.includes('video') || contentType.includes('application/octet-stream');
+            if (!videoResponse.ok || !isVideoContent) {
+                console.warn(`Video fetch failed or returned non-video content: ${contentType} for ${videoUrl}`);
                 return { size: null, durationSeconds: null };
             }
             
             const contentLength = videoResponse.headers.get('content-length');
             const size = contentLength ? parseInt(contentLength, 10) : null;
             
-            const blob = await videoResponse.blob();
+            // Try to create blob - this might fail if response is not actually a video
+            let blob;
+            try {
+                blob = await videoResponse.blob();
+            } catch (blobError) {
+                console.warn(`Failed to create blob from video response: ${blobError.message} for ${videoUrl}`);
+                return { size, durationSeconds: null };
+            }
+            
             const url = URL.createObjectURL(blob);
             
             return new Promise((resolve) => {
                 const videoEl = document.createElement('video');
                 videoEl.preload = 'metadata';
+                
+                // Set timeout to prevent hanging if video never loads
+                const timeout = setTimeout(() => {
+                    URL.revokeObjectURL(url);
+                    resolve({ size, durationSeconds: null });
+                }, 10000); // 10 second timeout
+                
                 videoEl.onloadedmetadata = () => {
+                    clearTimeout(timeout);
                     const durationSeconds = Number.isFinite(videoEl.duration) ? videoEl.duration : null;
                     URL.revokeObjectURL(url);
                     resolve({ size, durationSeconds });
                 };
-                videoEl.onerror = () => {
+                
+                videoEl.onerror = (e) => {
+                    clearTimeout(timeout);
+                    console.warn(`Video element error for ${videoUrl}:`, e);
                     URL.revokeObjectURL(url);
                     resolve({ size, durationSeconds: null });
                 };
+                
                 videoEl.src = url;
             });
         } catch (error) {
-            console.warn('Failed to fetch video metadata:', error);
+            // Handle network errors, CORS errors, etc.
+            if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                console.warn(`Network error fetching video: ${error.message} for ${filePath}`);
+            } else {
+                console.warn('Failed to fetch video metadata:', error);
+            }
             return { size: null, durationSeconds: null };
         }
     }, []);
@@ -491,9 +528,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
 
             const files = [];
             const deletedIds = new Set(deletedWitnessVideoIds[witnessId] || []);
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/5ea65233-445c-4c1f-bbb6-e6b13c7b0dec',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useWitnessManagement.js:492',message:'handleSaveWitness: Starting payload construction',data:{witnessId,recordsCount:records?.length,deletedIds:Array.from(deletedIds)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
+            // Debug logging removed - was causing ERR_CONNECTION_REFUSED on systems without debug service
             const videos = (records || [])
                 .filter((r) => {
                     // Filter out records marked for deletion (entire record deletion)
