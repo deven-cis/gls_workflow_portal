@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useToast } from '@/contexts/ToastContext';
 
@@ -16,7 +16,50 @@ export default function DocumentUpload({
 }) {
   const hasDocuments = documents.length > 0;
   const [isDragging, setIsDragging] = useState(false);
+  const [documentSizes, setDocumentSizes] = useState({});
+  const fetchedRef = useRef(new Set()); // Track which document IDs we've attempted to fetch
   const toast = useToast();
+
+  // Fetch file sizes for documents that have size 0 but have a filePath
+  useEffect(() => {
+    const fetchMissingSizes = async () => {
+      const documentsToFetch = documents.filter(doc => 
+        (!doc.size || doc.size === 0) && doc.filePath && !fetchedRef.current.has(doc.id)
+      );
+      
+      if (documentsToFetch.length === 0) return;
+
+      // Mark as fetched to avoid duplicate requests
+      documentsToFetch.forEach(doc => fetchedRef.current.add(doc.id));
+
+      const sizePromises = documentsToFetch.map(async (doc) => {
+        try {
+          const { fetchDocumentFileSize } = await import('@/lib/utils');
+          const size = await fetchDocumentFileSize(doc.filePath);
+          if (size && size > 0) {
+            return { id: doc.id, size };
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch size for document ${doc.id}:`, error);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(sizePromises);
+      const newSizes = {};
+      results.forEach((result) => {
+        if (result) {
+          newSizes[result.id] = result.size;
+        }
+      });
+
+      if (Object.keys(newSizes).length > 0) {
+        setDocumentSizes((prev) => ({ ...prev, ...newSizes }));
+      }
+    };
+
+    fetchMissingSizes();
+  }, [documents.map(d => `${d.id}-${d.filePath || ''}`).join(',')]); // Depend on document IDs and filePaths
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -152,8 +195,19 @@ export default function DocumentUpload({
           {documents.map((document) => {
             const extension = document.name.split('.').pop()?.toUpperCase() || 'DOC';
             let fileDate = '';
+            // Priority: uploadedAt (which now includes entered_at) > extract from ID > current date
             if (document.uploadedAt) {
-              fileDate = new Date(document.uploadedAt).toISOString().split('T')[0];
+              try {
+                fileDate = new Date(document.uploadedAt).toISOString().split('T')[0];
+              } catch (e) {
+                // If parsing fails, try fallback
+                if (document.id && typeof document.id === 'string' && document.id.includes('-')) {
+                  const timestamp = parseInt(document.id.split('-').pop());
+                  if (!isNaN(timestamp)) {
+                    fileDate = new Date(timestamp).toISOString().split('T')[0];
+                  }
+                }
+              }
             } else if (document.id && typeof document.id === 'string' && document.id.includes('-')) {
               // Try to extract date from ID if it contains timestamp
               const timestamp = parseInt(document.id.split('-').pop());
@@ -171,7 +225,14 @@ export default function DocumentUpload({
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-medium text-gray-900">{document.name}</p>
-                  <p className="text-xs text-gray-500">{(document.size / (1024 * 1024)).toFixed(1)}MB · {fileDate}</p>
+                  <p className="text-xs text-gray-500">
+                    {(() => {
+                      const size = documentSizes[document.id] || document.size;
+                      return size && size > 0 
+                        ? `${(size / (1024 * 1024)).toFixed(1)}MB` 
+                        : '0.0MB';
+                    })()} · {fileDate}
+                  </p>
                 </div>
                 {onRemoveDocument && !disabled && (
                   <button

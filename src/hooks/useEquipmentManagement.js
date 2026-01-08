@@ -56,14 +56,25 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
                     exhibitTech: equipmentData.exhibit_tech ?? false,
                     parkingCost: equipmentData.parking_cost ? String(equipmentData.parking_cost) : '',
                     timeAfterFive: equipmentData.time_after ?? '',
-                    documents: (equipmentData.documents || []).map((doc) => ({
-                        id: doc.id ? `doc-${doc.id}` : `doc-${Date.now()}-${Math.random()}`,
-                        name: doc.file_name || doc.name || 'Unknown',
-                        size: doc.size || 0,
-                        type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                        uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                        backendId: doc.id,
-                        filePath: doc.file_path
+                    documents: await Promise.all((equipmentData.documents || []).map(async (doc) => {
+                        let fileSize = doc.size || 0;
+                        // If size is 0 or missing and filePath exists, fetch it from server
+                        if ((!fileSize || fileSize === 0) && doc.file_path) {
+                            const { fetchDocumentFileSize } = await import('@/lib/utils');
+                            const fetchedSize = await fetchDocumentFileSize(doc.file_path);
+                            if (fetchedSize) {
+                                fileSize = fetchedSize;
+                            }
+                        }
+                        return {
+                            id: doc.id ? `doc-${doc.id}` : `doc-${Date.now()}-${Math.random()}`,
+                            name: doc.file_name || doc.name || 'Unknown',
+                            size: fileSize,
+                            type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                            uploadedAt: doc.entered_at || doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                            backendId: doc.id,
+                            filePath: doc.file_path
+                        };
                     }))
                 });
                 setEquipmentTimeId(equipmentData.id);
@@ -264,19 +275,28 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
                 
                 if (updatedEquipmentData) {
                     // Map backend response to frontend format with documents
-                    const mappedDocuments = (updatedEquipmentData.documents || []).map((doc) => {
+                    const mappedDocuments = await Promise.all((updatedEquipmentData.documents || []).map(async (doc) => {
                         // Use doc.id as the primary id, fallback to generated id if missing
                         const docId = doc.id ? `doc-${doc.id}` : `doc-${Date.now()}-${Math.random()}`;
+                        let fileSize = doc.size || 0;
+                        // If size is 0 or missing and filePath exists, fetch it from server
+                        if ((!fileSize || fileSize === 0) && doc.file_path) {
+                            const { fetchDocumentFileSize } = await import('@/lib/utils');
+                            const fetchedSize = await fetchDocumentFileSize(doc.file_path);
+                            if (fetchedSize) {
+                                fileSize = fetchedSize;
+                            }
+                        }
                         return {
                             id: docId,
                             name: doc.file_name || doc.name || 'Unknown',
-                            size: doc.size || 0,
+                            size: fileSize,
                             type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                            uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                            uploadedAt: doc.entered_at || doc.created_at || doc.uploaded_at || new Date().toISOString(),
                             backendId: doc.id, // Store backend ID separately
                             filePath: doc.file_path
                         };
-                    });
+                    }));
                     
                     setEquipmentInfo({
                         laptopUsed: updatedEquipmentData.laptop_used ?? false,

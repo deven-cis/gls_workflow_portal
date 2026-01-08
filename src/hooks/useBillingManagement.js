@@ -56,14 +56,25 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
                     notes: billingData.billing_notes ?? '',
                     videographerHours: billingData.videographer_hours_present ?? '',
                     fileLengthHours: billingData.file_hours_length ?? '',
-                    documents: (billingData.documents || []).map((doc) => ({
-                        id: doc.id || `doc-${doc.id}-${Date.now()}`,
-                        name: doc.file_name || doc.name || 'Unknown',
-                        size: doc.size || 0,
-                        type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                        uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                        backendId: doc.id,
-                        filePath: doc.file_path
+                    documents: await Promise.all((billingData.documents || []).map(async (doc) => {
+                        let fileSize = doc.size || 0;
+                        // If size is 0 or missing and filePath exists, fetch it from server
+                        if ((!fileSize || fileSize === 0) && doc.file_path) {
+                            const { fetchDocumentFileSize } = await import('@/lib/utils');
+                            const fetchedSize = await fetchDocumentFileSize(doc.file_path);
+                            if (fetchedSize) {
+                                fileSize = fetchedSize;
+                            }
+                        }
+                        return {
+                            id: doc.id || `doc-${doc.id}-${Date.now()}`,
+                            name: doc.file_name || doc.name || 'Unknown',
+                            size: fileSize,
+                            type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                            uploadedAt: doc.entered_at || doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                            backendId: doc.id,
+                            filePath: doc.file_path
+                        };
                     }))
                 });
                 setBillingId(billingData.id);
@@ -237,14 +248,25 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
                         notes: updatedBillingData.billing_notes ?? '',
                         videographerHours: updatedBillingData.videographer_hours_present ?? '',
                         fileLengthHours: updatedBillingData.file_hours_length ?? '',
-                        documents: (updatedBillingData.documents || []).map((doc) => ({
-                            id: doc.id || `doc-${doc.id}-${Date.now()}`,
-                            name: doc.file_name || doc.name || 'Unknown',
-                            size: doc.size || 0,
-                            type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                            uploadedAt: doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                            backendId: doc.id,
-                            filePath: doc.file_path
+                        documents: await Promise.all((updatedBillingData.documents || []).map(async (doc) => {
+                            let fileSize = doc.size || 0;
+                            // If size is 0 or missing and filePath exists, fetch it from server
+                            if ((!fileSize || fileSize === 0) && doc.file_path) {
+                                const { fetchDocumentFileSize } = await import('@/lib/utils');
+                                const fetchedSize = await fetchDocumentFileSize(doc.file_path);
+                                if (fetchedSize) {
+                                    fileSize = fetchedSize;
+                                }
+                            }
+                            return {
+                                id: doc.id || `doc-${doc.id}-${Date.now()}`,
+                                name: doc.file_name || doc.name || 'Unknown',
+                                size: fileSize,
+                                type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                                uploadedAt: doc.entered_at || doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                                backendId: doc.id,
+                                filePath: doc.file_path
+                            };
                         }))
                     });
                     if (updatedBillingData.id) {

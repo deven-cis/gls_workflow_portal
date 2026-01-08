@@ -35,20 +35,32 @@ export const useAttorneyManagement = (toast) => {
                 
                 if (Array.isArray(attorneysData) && attorneysData.length > 0) {
                     // Map backend response to frontend format (reusing same logic as handleAddAttorneySection)
-                    const mappedSections = attorneysData.map((attorney, index) => {
+                    const mappedSections = await Promise.all(attorneysData.map(async (attorney, index) => {
                         // Use same title logic: first is "Taking Attorney", rest are numbered
                         const title = index === 0 ? 'Taking Attorney' : `Attorney ${index}`;
                         
                         // Map document if file exists
-                        const documents = attorney.file_name ? [{
-                            id: `doc-${attorney.id}-${Date.now()}`,
-                            name: attorney.file_name,
-                            size: 0, // Backend doesn't provide size
-                            type: attorney.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                            uploadedAt: new Date().toISOString(),
-                            backendId: attorney.id,
-                            filePath: attorney.file_name_path
-                        }] : [];
+                        let documents = [];
+                        if (attorney.file_name) {
+                            let fileSize = 0;
+                            // If filePath exists, fetch file size from server
+                            if (attorney.file_name_path) {
+                                const { fetchDocumentFileSize } = await import('@/lib/utils');
+                                const fetchedSize = await fetchDocumentFileSize(attorney.file_name_path);
+                                if (fetchedSize) {
+                                    fileSize = fetchedSize;
+                                }
+                            }
+                            documents = [{
+                                id: `doc-${attorney.id}-${Date.now()}`,
+                                name: attorney.file_name,
+                                size: fileSize,
+                                type: attorney.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                                uploadedAt: attorney.entered_at || new Date().toISOString(),
+                                backendId: attorney.id,
+                                filePath: attorney.file_name_path
+                            }];
+                        }
                         
                         return {
                             id: `attorney-${attorney.id}`, // Use backend ID for consistency
@@ -62,7 +74,7 @@ export const useAttorneyManagement = (toast) => {
                             },
                             documents: documents
                         };
-                    });
+                    }));
                     
                     setAttorneySections(mappedSections);
                 } else {

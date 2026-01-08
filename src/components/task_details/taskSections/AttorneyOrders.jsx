@@ -206,12 +206,6 @@ export default function AttorneyOrders({
                                             ? section.fields.attorneyName 
                                             : section.title}
                                     </span>
-                                    {!isValid && !isEditing && (
-                                        <span className="text-xs text-gray-500">Incomplete</span>
-                                    )}
-                                    {isValid && !isEditing && (
-                                        <span className="text-xs text-green-600">Complete</span>
-                                    )}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {!isEditing && (
@@ -246,7 +240,7 @@ export default function AttorneyOrders({
                             </div>
 
                             {isExpanded && (
-                                <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-5">
+                                <div className={`border-t border-gray-200 p-4 space-y-5 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-gray-700">Attorney Name <span className="text-red-600">*</span></label>
@@ -255,7 +249,7 @@ export default function AttorneyOrders({
                                                 value={section.fields.attorneyName}
                                                 onChange={(e) => handleAttorneyFieldChange(section.id, 'attorneyName', e.target.value)}
                                                 placeholder="Enter attorney name"
-                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
                                                 disabled={!isEditing}
                                             />
                                         </div>
@@ -266,7 +260,7 @@ export default function AttorneyOrders({
                                                 value={section.fields.firmName}
                                                 onChange={(e) => handleAttorneyFieldChange(section.id, 'firmName', e.target.value)}
                                                 placeholder="Enter firm name"
-                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
                                                 disabled={!isEditing}
                                             />
                                         </div>
@@ -277,7 +271,7 @@ export default function AttorneyOrders({
                                                 value={section.fields.notes}
                                                 onChange={(e) => handleAttorneyFieldChange(section.id, 'notes', e.target.value)}
                                                 placeholder="Enter any notes"
-                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
                                                 disabled={!isEditing}
                                             />
                                         </div>
@@ -288,7 +282,7 @@ export default function AttorneyOrders({
                                                 value={section.fields.orderDetails}
                                                 onChange={(e) => handleAttorneyFieldChange(section.id, 'orderDetails', e.target.value)}
                                                 placeholder="Enter order details"
-                                                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
                                                 disabled={!isEditing}
                                             />
                                         </div>
