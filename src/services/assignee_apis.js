@@ -1,13 +1,8 @@
 import { galloInstance } from './galloInstance';
 import { getUser } from '@/lib/auth';
+import { resolveFileUrl } from '@/lib/config';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
-
-const resolveImageUrl = (path) => {
-    if (!path) return null;
-    if (path.startsWith('http')) return path;
-    return `${API_BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
-};
+const resolveImageUrl = resolveFileUrl;
 
 const mapUserToAssignee = (user, currentUserId) => {
     if (!user) return null;

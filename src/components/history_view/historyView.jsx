@@ -345,8 +345,6 @@ export default function HistoryView() {
 
     const historyData = activeTab === 'completed' ? completedJobs : cancelledJobs;
     const hasHistory = historyData && historyData.length > 0;
-    // Only show date filter if the active tab has data
-    const showDateFilter = hasHistory;
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -377,29 +375,26 @@ export default function HistoryView() {
                         </button>
                     </div>
 
-                    {/* Only show date filter if the active tab has data */}
-                    {showDateFilter && (
-                        <div className="relative" ref={calendarRef}>
-                            <button
-                                onClick={() => setShowCalendar(!showCalendar)}
-                                className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium text-sm md:text-base"
-                            >
-                                {formatDateRange()}
-                                <ChevronDown size={16} />
-                            </button>
+                    <div className="relative" ref={calendarRef}>
+                        <button
+                            onClick={() => setShowCalendar(!showCalendar)}
+                            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium text-sm md:text-base"
+                        >
+                            {formatDateRange()}
+                            <ChevronDown size={16} />
+                        </button>
 
-                            {showCalendar && (
-                                <div className="absolute right-0 top-full mt-2 z-50 w-[340px] md:w-[360px]">
-                                    <HistoryDateRangePicker
-                                        startDate={startDate}
-                                        endDate={endDate}
-                                        onDateChange={handleDateChange}
-                                        onClose={() => setShowCalendar(false)}
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    )}
+                        {showCalendar && (
+                            <div className="absolute right-0 top-full mt-2 z-50 w-[340px] md:w-[360px]">
+                                <HistoryDateRangePicker
+                                    startDate={startDate}
+                                    endDate={endDate}
+                                    onDateChange={handleDateChange}
+                                    onClose={() => setShowCalendar(false)}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {loading ? (

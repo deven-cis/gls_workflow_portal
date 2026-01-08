@@ -1,9 +1,6 @@
 import { galloInstance } from './galloInstance.js';
 import { formatTime12Hour } from '@/lib/utils';
 
-const GALLo_URL = 'http://127.0.0.1:8000'; 
-let API_BASE_URL = GALLo_URL;
-
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
   const dateStr = jobDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });

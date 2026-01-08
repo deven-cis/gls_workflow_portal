@@ -38,6 +38,9 @@ export default function WitnessManagement({
     const handleSave = onSaveWitnesses || (() => {});
     const handleSaveSingle = onSaveWitness || (() => {});
     const handleCancelSingle = onCancelWitness || (() => {});
+    
+
+    console.log("witnessRecords------", witnessRecords)
 
     const handleDownloadCompleteVideo = async (e, witnessId, witnessName) => {
         e.preventDefault();

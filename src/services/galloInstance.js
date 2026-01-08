@@ -1,11 +1,9 @@
 import { getRefreshToken, logout } from '@/lib/auth';
+import { API_BASE_URL } from '@/lib/config';
 
 /**
  * Generic fetch wrapper with error handling and token refresh
  */
-const GALLo_URL = 'http://127.0.0.1:8000'; 
-
-const API_BASE_URL = GALLo_URL;
 
 // Flag to prevent multiple concurrent refresh attempts
 let isRefreshing = false;

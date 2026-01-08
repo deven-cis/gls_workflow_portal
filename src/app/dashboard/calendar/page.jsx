@@ -1,7 +1,7 @@
 "use client";
 import CalendarView from '@/components/calendar_view/CalendarView';
 import { getUser } from '@/lib/auth';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { Menu, Calendar } from 'lucide-react';
 import EmptyState from '@/components/empty_state/EmptyState';
 
@@ -62,7 +62,13 @@ export default function CalendarPage() {
 
         {/* Conditional Rendering: List View or Calendar View */}
         {activeView === 'calendar' ? (
-          <CalendarView userName={userName} showHero={false} />
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+            </div>
+          }>
+            <CalendarView userName={userName} showHero={false} />
+          </Suspense>
         ) : (
           <EmptyState />
         )}

@@ -220,13 +220,18 @@ export const downloadFile = async (downloadUrl, defaultFileName = 'download.mp4'
 /**
  * Fetch video file size from file path using HEAD request
  * @param {string} filePath - Relative or absolute file path
- * @param {string} baseUrl - Base URL for the API (default: http://127.0.0.1:8000)
+ * @param {string} baseUrl - Base URL for the API (optional, defaults to API_BASE_URL from config)
  * @returns {Promise<number|null>} File size in bytes, or null if unavailable
  */
-export const fetchVideoFileSize = async (filePath, baseUrl = 'http://127.0.0.1:8000') => {
+export const fetchVideoFileSize = async (filePath, baseUrl = null) => {
   if (!filePath || typeof window === 'undefined') return null;
   
   try {
+    // Use provided baseUrl or get from config
+    if (!baseUrl) {
+      const { API_BASE_URL } = await import('@/lib/config');
+      baseUrl = API_BASE_URL;
+    }
     const videoUrl = filePath.startsWith('http') ? filePath : `${baseUrl}/${filePath}`;
     const token = localStorage.getItem('access_token');
     const headers = {};

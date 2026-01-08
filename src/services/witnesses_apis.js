@@ -1,9 +1,6 @@
-const GALLo_URL = 'http://127.0.0.1:8000'; 
-
-const API_BASE_URL = GALLo_URL;
-
 import { galloInstance } from './galloInstance';
 import { downloadFile } from '@/lib/utils';
+import { API_BASE_URL } from '@/lib/config';
 export const witnessesAPI = {
     getWitness: async (witnessId) => {
         const response = await galloInstance(`/witnesses/get/${witnessId}`);

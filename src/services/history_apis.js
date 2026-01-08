@@ -1,5 +1,6 @@
 import { galloInstance } from './galloInstance';
 import { formatTime12Hour, downloadFile } from '@/lib/utils';
+import { API_BASE_URL } from '@/lib/config';
 
 const mapJobToHistory = (job) => {
   const jobDate = new Date(job.job_date);
@@ -176,7 +177,6 @@ export const historyAPI = {
 
   
   downloadVideo: async (filePath, fileName) => {
-      const API_BASE_URL = 'http://127.0.0.1:8000';
       const downloadUrl = `${API_BASE_URL}/${filePath}`;
     return downloadFile(downloadUrl, fileName || 'video.mp4');
   },
@@ -185,7 +185,6 @@ export const historyAPI = {
   // Backend endpoint: GET /jobs/get/{job_no}/completed_details?download_all=true
   // Returns FileResponse (merged video file)
   downloadAllVideos: async (jobNo) => {
-      const API_BASE_URL = 'http://127.0.0.1:8000';
       const downloadUrl = `${API_BASE_URL}/jobs/get/${jobNo}/completed_details?download_all=true`;
     return downloadFile(downloadUrl, 'all_videos_merged.mp4');
   },

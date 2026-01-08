@@ -27,8 +27,8 @@ export const useWitnessManagement = (witnessesData, toast) => {
         
         try {
             // Construct full URL if filePath is relative
-            const baseUrl = 'http://127.0.0.1:8000'; // Match GALLo_URL
-            const videoUrl = filePath.startsWith('http') ? filePath : `${baseUrl}/${filePath}`;
+            const { API_BASE_URL } = await import('@/lib/config');
+            const videoUrl = filePath.startsWith('http') ? filePath : `${API_BASE_URL}/${filePath}`;
             
             // Fetch video file with authentication headers (if available)
             const token = localStorage.getItem('access_token');

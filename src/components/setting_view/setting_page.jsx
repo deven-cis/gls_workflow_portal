@@ -6,6 +6,7 @@ import { LockKeyhole, Eye, EyeOff } from "lucide-react";
 import { getUser, logout } from "@/lib/auth";
 import { useToast } from "@/contexts/ToastContext";
 import { userSettingsAPI } from "@/services/user_setting";
+import { resolveFileUrl } from "@/lib/config";
 
 export default function SettingPage() {
   const router = useRouter();
@@ -33,14 +34,7 @@ export default function SettingPage() {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [userId, setUserId] = useState(null);
 
-  const API_BASE_URL = "http://127.0.0.1:8000";
-  const resolveUrl = (pathOrUrl) => {
-    if (!pathOrUrl) return null;
-    const s = String(pathOrUrl);
-    if (s.startsWith("http://") || s.startsWith("https://")) return s;
-    if (s.startsWith("/")) return `${API_BASE_URL}${s}`;
-    return `${API_BASE_URL}/${s}`;
-  };
+  const resolveUrl = resolveFileUrl;
 
   const safePathTail = (s) => {
     if (!s) return null;
