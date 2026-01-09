@@ -51,12 +51,30 @@ export const useAttorneyManagement = (toast) => {
                                     fileSize = fetchedSize;
                                 }
                             }
+                            // Convert entered_at to ISO string if it exists, otherwise use current date
+                            let uploadedAtDate = new Date().toISOString();
+                            if (attorney.entered_at) {
+                                // If it's already a string, use it; if it's a Date object, convert to ISO string
+                                if (typeof attorney.entered_at === 'string') {
+                                    uploadedAtDate = attorney.entered_at;
+                                } else if (attorney.entered_at instanceof Date) {
+                                    uploadedAtDate = attorney.entered_at.toISOString();
+                                } else {
+                                    // Try to parse as date and convert to ISO string
+                                    try {
+                                        uploadedAtDate = new Date(attorney.entered_at).toISOString();
+                                    } catch (e) {
+                                        uploadedAtDate = new Date().toISOString();
+                                    }
+                                }
+                            }
+                            
                             documents = [{
                                 id: `doc-${attorney.id}-${Date.now()}`,
                                 name: attorney.file_name,
                                 size: fileSize,
                                 type: attorney.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                                uploadedAt: attorney.entered_at || new Date().toISOString(),
+                                uploadedAt: uploadedAtDate,
                                 backendId: attorney.id,
                                 filePath: attorney.file_name_path
                             }];
@@ -354,6 +372,15 @@ export const useAttorneyManagement = (toast) => {
             attorneysAPI.createJobAttorney(selectedJobId, attorneyData, documentFile)
                 .then((response) => {
                     console.log('Attorney creation response:', response);
+                    
+                    // Check if the response indicates failure
+                    if (response?.success === false || response?.status_code >= 400) {
+                        const errorMessage = response?.message || 'Failed to create attorney';
+                        console.error('Attorney creation failed:', response);
+                        toast.error(errorMessage);
+                        return;
+                    }
+                    
                     // Backend returns: { status_code, message, success, result: { id, ... } }
                     const createdAttorney = response?.result || response;
                     
@@ -362,7 +389,8 @@ export const useAttorneyManagement = (toast) => {
                     
                     if (!attorneyId) {
                         console.error('No attorney ID found in response:', response);
-                        toast.error('Failed to create attorney: No ID in response');
+                        const errorMessage = response?.message || 'Failed to create attorney: No ID in response';
+                        toast.error(errorMessage);
                         return;
                     }
                     

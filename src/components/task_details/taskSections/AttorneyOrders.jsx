@@ -77,7 +77,7 @@ export default function AttorneyOrders({
             delete next[sectionId];
             return next;
         });
-        toast.success('Attorney information saved successfully');
+        // toast.success('Attorney information saved successfully');
     };
 
     const handleCancel = (sectionId, e) => {

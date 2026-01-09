@@ -868,11 +868,11 @@ function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTim
                     </div>
                   )}
 
-                  {event.hasVideo && (
+                  {/* {event.hasVideo && (
                     <div className="flex items-center gap-2 text-blue-600 mt-1">
                       <span className="text-xs">✓ Video Available</span>
                     </div>
-                  )}
+                  )} */}
 
                   {event.status === 'pending' && (
                     <div className="mt-2 bg-red-50 border border-red-200 rounded p-2">

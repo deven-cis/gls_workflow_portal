@@ -109,7 +109,7 @@ const StatusBadge = ({ status }) => {
 const VideoPendingBadge = ({ isActive }) => {
     const [showTooltip, setShowTooltip] = useState(false);
     // Static data for hover tooltip
-    const videoPendingData = "Tom 1/5,  Joms 2/5";
+    const videoPendingData = "Tom 1/5,  Martin 2/5";
     
     return (
         <div 
