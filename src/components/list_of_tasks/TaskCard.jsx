@@ -105,11 +105,24 @@ const StatusBadge = ({ status }) => {
     return null;
 };
 
+// Format video_status object to string for tooltip
+const formatVideoStatus = (videoStatus) => {
+    if (!videoStatus || typeof videoStatus !== 'object') return '';
+    
+    return Object.entries(videoStatus)
+        .map(([name, status]) => `${name} ${status}`)
+        .join(', ');
+};
+
 // Video Pending badge component with hover tooltip
-const VideoPendingBadge = ({ isActive }) => {
+const VideoPendingBadge = ({ isActive, videoStatus }) => {
     const [showTooltip, setShowTooltip] = useState(false);
-    // Static data for hover tooltip
-    const videoPendingData = "Tom 1/5,  Martin 2/5";
+    const videoPendingData = formatVideoStatus(videoStatus);
+    
+    // Only render if videoStatus exists
+    if (!videoStatus || typeof videoStatus !== 'object' || Object.keys(videoStatus).length === 0) {
+        return null;
+    }
     
     return (
         <div 
@@ -117,20 +130,20 @@ const VideoPendingBadge = ({ isActive }) => {
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
         >
-            <span className="px-3 py-1 bg-red-100 text-red-600 text-xs font-medium rounded-2xl cursor-pointer hover:bg-red-200 transition-colors">
-                Video Pending
+            <span className="px-3 py-1 bg-pink-50 text-red-600 text-xs font-semibold rounded-2xl cursor-pointer hover:bg-pink-100 transition-colors ring-1 ring-red-200/50 shadow-sm">
+                Videos Pending
             </span>
-            {showTooltip && (
-                <div className="absolute right-0 bottom-full mb-2 z-50 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg whitespace-nowrap">
+            {showTooltip && videoPendingData && (
+                <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 z-50 bg-gray-100 border border-gray-300 text-gray-900 text-xs rounded-lg px-3 py-2 shadow-lg whitespace-nowrap">
                     {videoPendingData}
-                    <div className="absolute -bottom-1 right-4 w-2 h-2 bg-gray-900 rotate-45"></div>
+                    <div className="absolute -right-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-100 border-r border-b border-gray-300 rotate-45"></div>
                 </div>
             )}
         </div>
     );
 };
 
-export default function TaskCard({ task, isHighlighted = false, isSelected = false, onSelect, isUpcoming = false, onCancelJob, showVideoPending = false }) {
+export default function TaskCard({ task, isHighlighted = false, isSelected = false, onSelect, isUpcoming = false, onCancelJob }) {
     const router = useRouter();
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
@@ -254,8 +267,8 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                     {/* Status & Actions */}
                     <div className="flex flex-col items-end gap-1">
                         <div className="flex items-center gap-3">
-                            {!isUpcoming && showVideoPending && SESSION_NOT_STARTED_STATUSES.has(task.status) && (
-                                <VideoPendingBadge isActive={isActive} />
+                            {!isUpcoming && task.video_status && SESSION_NOT_STARTED_STATUSES.has(task.status) && (
+                                <VideoPendingBadge isActive={isActive} videoStatus={task.video_status} />
                             )}
                             {!isUpcoming && task.status && <StatusBadge status={task.status} />}
                             {task.uploadProgress && (

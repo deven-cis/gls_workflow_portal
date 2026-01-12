@@ -8,6 +8,7 @@ const mapCalendarEvent = (apiEvent) => {
   // Parse date field (could be 'date' or 'job_date') to Date object
   // Normalize to local date to avoid timezone issues
   // Backend returns: date=job.job_date (Python date object serialized as string)
+  console.log('apiEvent=============:', apiEvent);
   let jobDate;
   const dateValue = apiEvent.date || apiEvent.job_date;
   
@@ -89,7 +90,6 @@ const mapCalendarEvent = (apiEvent) => {
                     apiEvent.total_videos !== undefined &&
                     apiEvent.total_videos !== null &&
                     apiEvent.videos_uploaded < apiEvent.total_videos);
-  
   // Calculate deadline if provided (could be upload_deadline or deadline field)
   let deadline = null;
   if (apiEvent.upload_deadline) {
@@ -123,7 +123,7 @@ const mapCalendarEvent = (apiEvent) => {
       ? apiEvent.total_videos
       : (apiEvent.totalVideos !== undefined && apiEvent.totalVideos !== null ? apiEvent.totalVideos : 0),
     deadline: deadline,
-    hasVideo: apiEvent.has_video || apiEvent.hasVideo || (apiEvent.total_videos > 0) || (apiEvent.totalVideos > 0),
+    witnessVideosStatus: apiEvent.witness_videos_status|| {},
     type: apiEvent.case?.case_type || apiEvent.type || apiEvent.case_type || 'deposition',
     location: apiEvent.job_loc_name || apiEvent.location || '',
     caseNo: apiEvent.case_no || apiEvent.caseNo,
@@ -145,6 +145,7 @@ export const calendarAPI = {
       const params = new URLSearchParams({ year: year.toString(), month: month.toString() });
       const response = await galloInstance(`/jobs/calendar/events?${params.toString()}`);
       if (response?.success && response?.result) {
+        console.log('response.result=============:', response.result);
         return response.result.map(mapCalendarEvent);
       }
       
@@ -177,6 +178,7 @@ export const calendarAPI = {
       });
       const response = await galloInstance(`/jobs/calendar/events?${params.toString()}`);
       if (response?.success && response?.result) {
+        console.log('response.result=============:', response.result);
         return response.result.map(mapCalendarEvent);
       }
       
@@ -214,6 +216,7 @@ export const calendarAPI = {
       const response = await galloInstance(`/jobs/calendar/events?${params.toString()}`);
 
       if (response?.success && response?.result) {
+        console.log('response.result=============:', response.result);
         return response.result.map(mapCalendarEvent);
       }
       

@@ -4,6 +4,44 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Clock, X, MapPin, Calendar as CalendarIcon, Lock, ExternalLink } from 'lucide-react';
 import { calendarAPI } from '@/services/calendar_apis';
 
+// Format video_status object to string for tooltip
+const formatVideoStatus = (videoStatus) => {
+  if (!videoStatus || typeof videoStatus !== 'object') return '';
+  
+  return Object.entries(videoStatus)
+    .map(([name, status]) => `${name} ${status}`)
+    .join(', ');
+};
+
+// Video Pending badge component with hover tooltip
+const VideoPendingBadge = ({ videoStatus }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const videoPendingData = formatVideoStatus(videoStatus);
+  
+  // Only render if videoStatus exists
+  if (!videoStatus || typeof videoStatus !== 'object' || Object.keys(videoStatus).length === 0) {
+    return null;
+  }
+  
+  return (
+    <div 
+      className="relative inline-block"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <span className="px-2 py-0.5 bg-pink-50 text-red-600 text-[10px] font-semibold rounded-2xl cursor-pointer hover:bg-pink-100 transition-colors ring-1 ring-red-200/50 shadow-sm">
+        Videos Pending
+      </span>
+      {showTooltip && videoPendingData && (
+        <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 z-50 bg-gray-100 border border-gray-300 text-gray-900 text-xs rounded-lg px-3 py-2 shadow-lg whitespace-nowrap">
+          {videoPendingData}
+          <div className="absolute -right-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-gray-100 border-r border-b border-gray-300 rotate-45"></div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Constants
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", 
   "July", "August", "September", "October", "November", "December"];
@@ -81,7 +119,7 @@ const isSameDate = (date1, date2) => {
 
 // Reusable EventCard Component
 function EventCard({ event, formatTime, getTimeRemaining, variant = 'default', onClick, onNavigate }) {
-  console.log('event:', event);
+  console.log('event=============:', event);
   const isPending = event.status === 'pending';
   const timeRemaining = event.deadline ? getTimeRemaining(event.deadline) : null;
   const isCompact = variant === 'compact';
@@ -132,36 +170,20 @@ function EventCard({ event, formatTime, getTimeRemaining, variant = 'default', o
             event.title.length > 32 ? `${event.title.substring(0, 32)}...` : event.title
           )}
         </div>
-
-        {/* Video indicator */}
-        {event.hasVideo && !isPending && (
-          <div className={`text-gray-600 text-[10px] leading-tight`}>
-            Video
+        
+        {/* Videos Pending Badge */}
+        {event.witnessVideosStatus && (
+          <div className="mb-1">
+            <VideoPendingBadge videoStatus={event.witnessVideosStatus} />
           </div>
         )}
-
-        {/* Pending status */}
-        {isPending && (
-          <div className="space-y-0.5 mt-1">
-            {/* Videos Pending pill - red with white text */}
-            <div className="inline-block bg-red-600 text-white px-2 py-0.5 rounded-full text-[10px] font-medium leading-tight">
-              Videos Pending
-            </div>
-            
-            {/* Video upload progress - gray text */}
-            <div className="text-gray-600 text-[10px] leading-tight">
-              {event.videosUploaded}/{event.totalVideos} videos uploaded
-            </div>
-            
-            {/* Deadline - red with clock icon */}
-            {timeRemaining && (
-              <div className="flex items-center gap-1 text-red-600 text-[10px] font-medium leading-tight">
-                <Clock className="w-3 h-3" />
-                <span>
-                  Deadline: {timeRemaining.hours}hrs {timeRemaining.minutes} min
-                </span>
-              </div>
-            )}
+        
+        {timeRemaining && (
+          <div className="flex items-center gap-1 text-red-600 text-[10px] font-medium leading-tight">
+            <Clock className="w-3 h-3" />
+            <span>
+              Deadline: {timeRemaining.hours}hrs {timeRemaining.minutes} min
+            </span>
           </div>
         )}
       </div>
@@ -874,15 +896,17 @@ function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTim
                     </div>
                   )} */}
 
-                  {event.status === 'pending' && (
+                  {(event.status === 'pending' || event.witnessVideosStatus) && (
                     <div className="mt-2 bg-red-50 border border-red-200 rounded p-2">
                       <div className="flex items-center gap-1.5 mb-1">
                         <Clock className="w-3 h-3 text-red-600" />
                         <span className="text-xs font-medium text-red-700">Videos Pending</span>
                       </div>
-                      <div className="text-xs text-red-600">
-                        {event.videosUploaded}/{event.totalVideos} uploaded
-                      </div>
+                      {event.witnessVideosStatus && formatVideoStatus(event.witnessVideosStatus) && (
+                        <div className="text-xs text-red-600 mb-1">
+                          {formatVideoStatus(event.witnessVideosStatus)}
+                        </div>
+                      )}
                       {event.deadline && getTimeRemaining(event.deadline) && (
                         <div className="text-xs text-red-500 mt-1">
                           {getTimeRemaining(event.deadline).hours}h {getTimeRemaining(event.deadline).minutes}m left
