@@ -1,4 +1,5 @@
 import { galloInstance } from './galloInstance';
+import { endpoints } from '@/constants/endpoints';
 
 /**
  * Map backend calendar event (CalendarEventSchema) to frontend event format
@@ -143,7 +144,9 @@ export const calendarAPI = {
   getMonthEvents: async (year, month) => {
     try {
       const params = new URLSearchParams({ year: year.toString(), month: month.toString() });
-      const response = await galloInstance(`/jobs/calendar/events?${params.toString()}`);
+      const response = await galloInstance(
+        endpoints.jobs.calendarEvents(params.toString())
+      );
       if (response?.success && response?.result) {
         console.log('response.result=============:', response.result);
         return response.result.map(mapCalendarEvent);
@@ -176,7 +179,9 @@ export const calendarAPI = {
         month: month.toString(),
         day: day.toString()
       });
-      const response = await galloInstance(`/jobs/calendar/events?${params.toString()}`);
+      const response = await galloInstance(
+        endpoints.jobs.calendarEvents(params.toString())
+      );
       if (response?.success && response?.result) {
         console.log('response.result=============:', response.result);
         return response.result.map(mapCalendarEvent);
@@ -213,7 +218,9 @@ export const calendarAPI = {
         start_date: formatDate(startDate),
         end_date: formatDate(endDate),
       });
-      const response = await galloInstance(`/jobs/calendar/events?${params.toString()}`);
+      const response = await galloInstance(
+        endpoints.jobs.calendarEvents(params.toString())
+      );
 
       if (response?.success && response?.result) {
         console.log('response.result=============:', response.result);

@@ -1,23 +1,24 @@
 import { galloInstance } from './galloInstance';
 import { downloadFile } from '@/lib/utils';
 import { API_BASE_URL } from '@/lib/config';
+import { endpoints } from '@/constants/endpoints';
 export const witnessesAPI = {
     getWitness: async (witnessId) => {
-        const response = await galloInstance(`/witnesses/get/${witnessId}`);
+        const response = await galloInstance(endpoints.witnesses.get(witnessId));
         // Backend returns: { status_code, message, success, result }
         return response?.result ?? response;
     },
     getJobWitnesses: async (jobId) => {
         // Backend: GET /witnesses/list/{job_no}
-        const response = await galloInstance(`/witnesses/list/${jobId}`);
-        console.log('✅ API: Witnesses response:', response);
+        const response = await galloInstance(endpoints.witnesses.listByJob(jobId));
+        console.log('API: Witnesses response:', response);
         // Backend returns: { status_code, message, success, result: [] }
         return response?.result || [];
     },
 
     createJObWitness: async (witnessData) => {
         console.log('Creating witness with data:', witnessData);
-        const response = await galloInstance('/witnesses/create-name', {
+        const response = await galloInstance(endpoints.witnesses.createName(), {
             method: 'POST',
             body: JSON.stringify(witnessData),
         });
@@ -29,14 +30,14 @@ export const witnessesAPI = {
         return response?.result ?? response;
     },
     addWitnessToCase: async (caseId, witnessId) => {
-        const response = await galloInstance(`/witnesses/add/case/${caseId}`, {
+        const response = await galloInstance(endpoints.witnesses.addToCase(caseId), {
             method: 'POST',
             body: JSON.stringify({ case_id: caseId, witness_id: witnessId }),
         });
         return response;
     },
     deleteWitness: async (witnessId) => {
-        const response = await galloInstance(`/witnesses/delete/${witnessId}`, {
+        const response = await galloInstance(endpoints.witnesses.delete(witnessId), {
             method: 'DELETE',
         });
         if (response && response.success === false) {
@@ -54,7 +55,7 @@ export const witnessesAPI = {
      * Returns: { id, witness_name }
      */
     updateWitnessName: async (witnessId, witness_name) => {
-        const response = await galloInstance(`/witnesses/name/${witnessId}`, {
+        const response = await galloInstance(endpoints.witnesses.updateName(witnessId), {
             method: 'PATCH',
             body: JSON.stringify({ witness_name }),
         });
@@ -78,7 +79,7 @@ export const witnessesAPI = {
             if (f) formData.append('files', f, f.name);
         }
 
-        const response = await galloInstance('/witnesses/save-all', {
+        const response = await galloInstance(endpoints.witnesses.saveAll(), {
             method: 'POST',
             body: formData,
             // Ensure we NEVER force application/json for this request (multipart boundary must be set by browser)
@@ -101,7 +102,10 @@ export const witnessesAPI = {
      * @param {string} [witnessName] - Optional witness name for filename
      */
     downloadWitnessesCompleteVideo: async (jobNo, witnessId, witnessName = null) => {
-        const downloadUrl = `${API_BASE_URL}/witnesses/${jobNo}/download_witnesses_complete_video?witness_id=${witnessId}&download_all=true`;
+        const downloadUrl = `${API_BASE_URL}${endpoints.witnesses.downloadCompleteVideo(
+            jobNo,
+            witnessId
+        )}`;
         // Generate dynamic filename: if witness name provided, use it; otherwise use job number and witness ID
         const sanitizedName = witnessName 
             ? witnessName.replace(/[^a-zA-Z0-9_-]/g, '_').trim()

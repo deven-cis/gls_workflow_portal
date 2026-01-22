@@ -1,4 +1,5 @@
 import { galloInstance } from './galloInstance';
+import { endpoints } from '@/constants/endpoints';
 
 /**
  * User settings / profile APIs
@@ -8,7 +9,7 @@ import { galloInstance } from './galloInstance';
  */
 export const userSettingsAPI = {
   getCurrentUser: async () => {
-    const response = await galloInstance('/users/current_user');
+    const response = await galloInstance(endpoints.users.currentUser());
     if (response && response.success === false) {
       const message = response?.result?.message || response?.message || 'Failed to load user profile';
       throw new Error(message);
@@ -20,7 +21,7 @@ export const userSettingsAPI = {
     const formData = new FormData();
     formData.append('file', file, file?.name);
 
-    const response = await galloInstance('/users/profile-picture', {
+    const response = await galloInstance(endpoints.users.profilePicture(), {
       method: 'POST',
       body: formData,
       // ensure multipart boundary is set by browser
@@ -36,7 +37,7 @@ export const userSettingsAPI = {
   // Backend endpoint not provided yet; implement when available.
   // Expected: DELETE /users/profile-picture
   removeProfilePicture: async () => {
-    const response = await galloInstance('/users/profile-picture', {
+    const response = await galloInstance(endpoints.users.profilePicture(), {
       method: 'DELETE',
     });
     if (response && response.success === false) {
@@ -47,7 +48,7 @@ export const userSettingsAPI = {
   },
 
   changePassword: async (userId, oldPassword, newPassword) => {
-    const response = await galloInstance('/users/change-password', {
+    const response = await galloInstance(endpoints.users.changePassword(), {
       method: 'POST',
       body: JSON.stringify({
         user_id: userId,

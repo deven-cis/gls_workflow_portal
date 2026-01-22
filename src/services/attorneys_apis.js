@@ -1,9 +1,10 @@
 import { galloInstance } from './galloInstance';
+import { endpoints } from '@/constants/endpoints';
 
 export const attorneysAPI = {
     // Get all attorneys for a job
     getJobAttorneys: async (jobId) => {
-        const response = await galloInstance(`/attorneys/list/${jobId}`);
+        const response = await galloInstance(endpoints.attorneys.listByJob(jobId));
         console.log('✅ API: Attorneys response:', response);
         // Return the result array from backend response
         return response?.result || [];
@@ -28,7 +29,7 @@ export const attorneysAPI = {
         }
         
         // galloInstance automatically handles FormData (doesn't set Content-Type)
-        const response = await galloInstance('/attorneys/create', {
+        const response = await galloInstance(endpoints.attorneys.create(), {
             method: 'POST',
             body: formData,
         });
@@ -64,7 +65,7 @@ export const attorneysAPI = {
         // If neither condition, document field is not sent - backend keeps existing document
         
         // galloInstance automatically handles FormData (doesn't set Content-Type)
-        const response = await galloInstance(`/attorneys/update/${attorneyId}`, {
+        const response = await galloInstance(endpoints.attorneys.update(attorneyId), {
             method: 'PUT',
             body: formData,
         });
@@ -74,7 +75,7 @@ export const attorneysAPI = {
 
     // Delete attorney
     deleteAttorney: async (attorneyId) => {
-        const response = await galloInstance(`/attorneys/delete/${attorneyId}`, {
+        const response = await galloInstance(endpoints.attorneys.delete(attorneyId), {
             method: 'DELETE',
         });
         console.log('Attorney deletion response:', response);

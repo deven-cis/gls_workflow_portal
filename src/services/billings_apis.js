@@ -1,4 +1,5 @@
 import { galloInstance } from './galloInstance.js';
+import { endpoints } from '@/constants/endpoints';
 
 // Helper function to build FormData for billing (shared between create and update)
 const buildBillingFormData = (billingInfo, jobNo = null) => {
@@ -37,7 +38,7 @@ export const billingAPI = {
     // Returns null if billing doesn't exist (404) - this is not an error, just means no billing yet
     getJobBilling: async (jobNo) => {
         try {
-            const response = await galloInstance(`/billings/get/${jobNo}`);
+            const response = await galloInstance(endpoints.billings.get(jobNo));
             return response?.result || null;
         } catch (err) {
             // Handle 404 as "no billing found" - not an error, just means billing hasn't been created yet
@@ -57,7 +58,7 @@ export const billingAPI = {
     // Create billing information for a job
     createBilling: async (jobNo, billingInfo) => {
         const formData = buildBillingFormData(billingInfo, jobNo);
-        return galloInstance('/billings/create', {
+        return galloInstance(endpoints.billings.create(), {
             method: 'POST',
             body: formData,
         });
@@ -106,7 +107,7 @@ export const billingAPI = {
             });
         }
 
-        return galloInstance(`/billings/update/${billingId}`, {
+        return galloInstance(endpoints.billings.update(billingId), {
             method: 'PUT',
             body: formData,
         });
@@ -116,7 +117,7 @@ export const billingAPI = {
     // Backend endpoint: DELETE /billings/delete/{billing_id}
     // Backend returns: { status_code, message, success, result }
     deleteBilling: async (billingId) => {
-        const response = await galloInstance(`/billings/delete/${billingId}`, {
+        const response = await galloInstance(endpoints.billings.delete(billingId), {
             method: 'DELETE',
         });
         return response;

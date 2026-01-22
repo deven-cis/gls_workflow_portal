@@ -1,6 +1,7 @@
 import { galloInstance } from './galloInstance';
 import { formatTime12Hour } from '@/lib/utils';
 import { API_BASE_URL } from '@/lib/config';
+import { endpoints } from '@/constants/endpoints';
 
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
@@ -40,7 +41,7 @@ export const casesAPI = {
     // Get all tasks
   getTasks: async (filters = {}) => {
     const params = new URLSearchParams(filters).toString();
-    return galloInstance(`/tasks${params ? `?${params}` : ''}`);
+    return galloInstance(endpoints.tasks.list(params));
   },
 
   // Get case by ID
@@ -48,7 +49,7 @@ export const casesAPI = {
   // Returns null if case doesn't exist (404) - this is not an error, just means case not found
   getCaseById: async (caseId) => {
     try {
-      const response = await galloInstance(`/case/get/${caseId}`);
+      const response = await galloInstance(endpoints.cases.get(caseId));
       
       // Backend returns: { status_code, message, success, result }
       if (response && response.success && response.result) {
@@ -72,7 +73,7 @@ export const casesAPI = {
   },
 
   editCase: async (caseId, caseData) => {
-    const data = await galloInstance(`/case/edit/${caseId}`, {
+    const data = await galloInstance(endpoints.cases.edit(caseId), {
       method: 'PUT',
       body: JSON.stringify(caseData),
     });
@@ -89,7 +90,9 @@ export const casesAPI = {
       params.append('page', page.toString());
       params.append('page_size', pageSize.toString());
       
-      const response = await galloInstance(`/jobs/pending/?${params.toString()}`);
+      const response = await galloInstance(
+        `${endpoints.jobs.pending()}?${params.toString()}`
+      );
       
       // Handle error response
       if (!response || response.success === false) {
@@ -147,7 +150,9 @@ export const casesAPI = {
   // Backend endpoint: GET /jobs/get/{job_no}
   getJobMarkIsDoneDetails: async (jobNo,caseId ) => {
     try {
-      const response = await galloInstance(`/jobs/get/${jobNo}/${caseId}`);
+      const response = await galloInstance(
+        endpoints.jobs.getMarkIsDoneDetails(jobNo, caseId)
+      );
       return response;
     } catch (err) {
       // Handle 404 as "no job found"
@@ -171,7 +176,9 @@ export const casesAPI = {
       params.append('page', page.toString());
       params.append('page_size', pageSize.toString());
       
-      const response = await galloInstance(`/jobs/upcoming/?${params.toString()}`);
+      const response = await galloInstance(
+        `${endpoints.jobs.upcoming()}?${params.toString()}`
+      );
       
       // Handle error response
       if (!response || response.success === false) {
@@ -234,7 +241,7 @@ export const casesAPI = {
         cancel_details: cancelData.details,
       };
       console.log('cancelJob payload', payload);
-      const response = await galloInstance(`/jobs/${jobNo}/cancel`, {
+      const response = await galloInstance(endpoints.jobs.cancel(jobNo), {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -265,7 +272,7 @@ export const casesAPI = {
 
   // Create new task
   createTask: async (taskData) => {
-    return galloInstance('/tasks', {
+    return galloInstance(endpoints.tasks.create(), {
       method: 'POST',
       body: JSON.stringify(taskData),
     });
@@ -273,7 +280,7 @@ export const casesAPI = {
 
   // Update task
   updateTask: async (taskId, taskData) => {
-    return galloInstance(`/tasks/${taskId}`, {
+    return galloInstance(endpoints.tasks.update(taskId), {
       method: 'PUT',
       body: JSON.stringify(taskData),
     });
@@ -281,7 +288,7 @@ export const casesAPI = {
 
   // Delete task
   deleteTask: async (taskId) => {
-    return galloInstance(`/tasks/${taskId}`, {
+    return galloInstance(endpoints.tasks.delete(taskId), {
       method: 'DELETE',
     });
   },
@@ -291,7 +298,7 @@ export const casesAPI = {
     const formData = new FormData();
     formData.append('file', file);
 
-    return galloInstance(`/tasks/${taskId}/upload-video`, {
+    return galloInstance(endpoints.tasks.uploadVideo(taskId), {
       method: 'POST',
       body: formData,
     }).then(res => {

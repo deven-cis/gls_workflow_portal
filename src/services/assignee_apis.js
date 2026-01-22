@@ -1,6 +1,7 @@
 import { galloInstance } from './galloInstance';
 import { getUser } from '@/lib/auth';
 import { resolveFileUrl } from '@/lib/config';
+import { endpoints } from '@/constants/endpoints';
 
 const resolveImageUrl = resolveFileUrl;
 
@@ -21,7 +22,9 @@ export const assigneeAPI = {
             const currentUser = getUser();
             const currentUserId = currentUser?.id || currentUser?.user_id;
             
-            const response = await galloInstance('/users/assignee-users-list');
+            const response = await galloInstance(
+                endpoints.users.assigneeUsersList()
+            );
             if (!response?.success) return [];
             
             return (response.result || []).map(user => mapUserToAssignee(user, currentUserId));
@@ -37,7 +40,7 @@ export const assigneeAPI = {
             throw new Error('Please log in again.');
         }
 
-        const response = await galloInstance('/jobs/reassign', {
+        const response = await galloInstance(endpoints.jobs.reassign(), {
             method: 'POST',
             body: JSON.stringify({
                 assignee_user_id: userId,

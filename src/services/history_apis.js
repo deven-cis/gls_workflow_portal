@@ -1,6 +1,7 @@
 import { galloInstance } from './galloInstance';
 import { formatTime12Hour, downloadFile } from '@/lib/utils';
 import { API_BASE_URL } from '@/lib/config';
+import { endpoints } from '@/constants/endpoints';
 
 const mapJobToHistory = (job) => {
   const jobDate = new Date(job.job_date);
@@ -61,7 +62,7 @@ export const historyAPI = {
 
       // Build URL with query parameters
       const queryString = params.toString();
-      const url = `/jobs/cancelled_and_completed_jobs/${type}?${queryString}`;
+      const url = endpoints.jobs.cancelledAndCompletedJobs(type, queryString);
       
       // Backend expects type as path parameter: /jobs/cancelled_and_completed_jobs/{type}
       const response = await galloInstance(url);
@@ -139,7 +140,9 @@ export const historyAPI = {
   // Backend endpoint: GET /jobs/get/{job_no}/completed_details
   getCompletedJobDetails: async (jobNo) => {
     try {
-      const response = await galloInstance(`/jobs/get/${jobNo}/completed_details`);
+      const response = await galloInstance(
+        endpoints.jobs.completedDetails(jobNo)
+      );
       console.log('completed job details:', response);
       
       // Handle error response
@@ -159,7 +162,9 @@ export const historyAPI = {
   // Backend endpoint: GET /jobs/get/{job_no}/cancelled_details
   getCancelledJobDetails: async (jobNo) => {
     try {
-      const response = await galloInstance(`/jobs/get/${jobNo}/cancelled_details`);
+      const response = await galloInstance(
+        endpoints.jobs.cancelledDetails(jobNo)
+      );
       
       // Handle error response
       if (!response || response.success === false || !response.result) {

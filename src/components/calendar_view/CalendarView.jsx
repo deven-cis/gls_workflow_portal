@@ -889,20 +889,16 @@ function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTim
                       <span>Case: {event.caseNo}</span>
                     </div>
                   )}
-
-                  {/* {event.hasVideo && (
-                    <div className="flex items-center gap-2 text-blue-600 mt-1">
-                      <span className="text-xs">✓ Video Available</span>
-                    </div>
-                  )} */}
-
-                  {(event.status === 'pending' || event.witnessVideosStatus) && (
+                  {/* Only show "Videos Pending" if there are actually videos pending (witnessVideosStatus exists and has data) */}
+                  {event.witnessVideosStatus && 
+                   typeof event.witnessVideosStatus === 'object' && 
+                   Object.keys(event.witnessVideosStatus).length > 0 && (
                     <div className="mt-2 bg-red-50 border border-red-200 rounded p-2">
                       <div className="flex items-center gap-1.5 mb-1">
                         <Clock className="w-3 h-3 text-red-600" />
                         <span className="text-xs font-medium text-red-700">Videos Pending</span>
                       </div>
-                      {event.witnessVideosStatus && formatVideoStatus(event.witnessVideosStatus) && (
+                      {formatVideoStatus(event.witnessVideosStatus) && (
                         <div className="text-xs text-red-600 mb-1">
                           {formatVideoStatus(event.witnessVideosStatus)}
                         </div>

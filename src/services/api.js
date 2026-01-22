@@ -1,5 +1,6 @@
 import { galloInstance } from './galloInstance.js';
 import { formatTime12Hour } from '@/lib/utils';
+import { endpoints } from '@/constants/endpoints';
 
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
@@ -37,7 +38,7 @@ export const taskAPI = {
  */
 export const authAPI = {
   login: async (login_name, login_password) => {
-    const response = await galloInstance('/api/login', {
+    const response = await galloInstance(endpoints.auth.login(), {
       method: 'POST',
       body: JSON.stringify({ login_name, login_password }),
       headers: {
@@ -68,7 +69,7 @@ export const authAPI = {
 
 
   refreshToken: async (refreshToken) => {
-    const response = await galloInstance('/api/refresh-token', {
+    const response = await galloInstance(endpoints.auth.refreshToken(), {
       method: 'POST',
       body: JSON.stringify({ refresh_token: refreshToken }),
       headers: {

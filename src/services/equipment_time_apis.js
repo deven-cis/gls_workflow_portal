@@ -1,4 +1,5 @@
 import { galloInstance } from './galloInstance.js';
+import { endpoints } from '@/constants/endpoints';
 
 // Helper function to build FormData for equipment time (shared between create and update)
 const buildEquipmentTimeFormData = (equipmentInfo, jobNo = null) => {
@@ -36,7 +37,7 @@ export const equipmentTimeAPI = {
     // Returns null if equipment time doesn't exist (404) or backend error (500) - handles gracefully
     getJobEquipmentTime: async (jobNo) => {
         try {
-            const response = await galloInstance(`/equipment-time/get/${jobNo}`);
+            const response = await galloInstance(endpoints.equipmentTime.get(jobNo));
             return response?.result || null;
         } catch (err) {
             // Handle 404 as "no equipment time found" - not an error, just means equipment time hasn't been created yet
@@ -65,7 +66,7 @@ export const equipmentTimeAPI = {
     // Backend endpoint: POST /equipment-time/create
     createEquipmentTime: async (jobNo, equipmentInfo) => {
         const formData = buildEquipmentTimeFormData(equipmentInfo, jobNo);
-        return galloInstance('/equipment-time/create', {
+        return galloInstance(endpoints.equipmentTime.create(), {
             method: 'POST',
             body: formData,
         });
@@ -115,7 +116,7 @@ export const equipmentTimeAPI = {
             });
         }
 
-        return galloInstance(`/equipment-time/update/${equipmentTimeId}`, {
+        return galloInstance(endpoints.equipmentTime.update(equipmentTimeId), {
             method: 'PUT',
             body: formData,
         });
@@ -124,7 +125,7 @@ export const equipmentTimeAPI = {
     // Delete equipment time information
     // Backend endpoint: DELETE /equipment-time/delete/{equipment_time_id}
     deleteEquipmentTime: async (equipmentTimeId) => {
-        const response = await galloInstance(`/equipment-time/delete/${equipmentTimeId}`, {
+        const response = await galloInstance(endpoints.equipmentTime.delete(equipmentTimeId), {
             method: 'DELETE',
         });
         return response;

@@ -1,4 +1,5 @@
 import { galloInstance } from './galloInstance';
+import { endpoints } from '@/constants/endpoints';
 
 export const sessionAPI = {
     /**
@@ -7,7 +8,7 @@ export const sessionAPI = {
      * Backend returns: { status_code, message, success, result: { job_no, start_time, computed_status } }
      */
     startSession: async (jobNo) => {
-        const response = await galloInstance(`/jobs/${jobNo}/session/start`, {
+        const response = await galloInstance(endpoints.jobs.sessionStart(jobNo), {
             method: 'POST',
         });
         
@@ -27,7 +28,9 @@ export const sessionAPI = {
      */
     getSessionStartTime: async (jobNo) => {
         try {
-            const response = await galloInstance(`/jobs/get/${jobNo}/session_start_time/`);
+            const response = await galloInstance(
+                endpoints.jobs.sessionStartTime(jobNo)
+            );
             // Return the full response object so caller can check success status
             return response;
         } catch (err) {
@@ -44,7 +47,7 @@ export const sessionAPI = {
      * Backend returns: { status_code, message, success, result: {} }
      */
     endSession: async (jobNo) => {
-        const response = await galloInstance(`/jobs/${jobNo}/session/end`, {
+        const response = await galloInstance(endpoints.jobs.sessionEnd(jobNo), {
             method: 'POST',
         });
         
