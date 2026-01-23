@@ -7,6 +7,7 @@ import AvatarMenu from '@/components/layouts/AvatarMenu';
 import { getUser } from '@/lib/auth';
 import { userSettingsAPI } from '@/services/user_setting';
 import { resolveFileUrl } from '@/lib/config';
+import { ROUTES } from '@/lib/routes';
 
 export default function Header() {
     const pathname = usePathname();
@@ -29,7 +30,7 @@ export default function Header() {
         try {
             router.back();
         } catch (e) {
-            router.push('/dashboard/list_of_tasks');
+            router.push(ROUTES.DASHBOARD.LIST_OF_TASKS);
         }
     };
 

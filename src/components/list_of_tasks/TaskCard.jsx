@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPin, Clock, MoreVertical, Trash2 } from 'lucide-react';
 import CancelJobModal from '@/components/common/CancelJobModal';
+import { ROUTES, createNavigationHelper } from '@/lib/routes';
 
 // Session status constants - using Sets for O(1) lookup
 const SESSION_STARTED_STATUSES = new Set(['Session Started', 'SESSION_IN_PROGRESS', 'SESSION_STARTED']);
@@ -145,6 +146,7 @@ const VideoPendingBadge = ({ isActive, videoStatus }) => {
 
 export default function TaskCard({ task, isHighlighted = false, isSelected = false, onSelect, isUpcoming = false, onCancelJob }) {
     const router = useRouter();
+    const navigate = useMemo(() => createNavigationHelper(router), [router]);
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [liveDeadline, setLiveDeadline] = useState(null);
@@ -181,10 +183,10 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
     // Memoize callbacks to prevent unnecessary re-renders
     const handleCardClick = useCallback(() => {
         onSelect?.(task.id);
-        if (isSelected) {
-            router.push(`/dashboard/task-details/${task.caseInfo?.id}?jobId=${task.id}`);
+        if (isSelected && task.caseInfo?.id) {
+            navigate.toTaskDetails(task.caseInfo.id, { jobId: task.id });
         }
-    }, [task.id, task.caseInfo?.id, isSelected, onSelect, router]);
+    }, [task.id, task.caseInfo?.id, isSelected, onSelect, navigate]);
 
     const handleMoreClick = useCallback((e) => {
         e.stopPropagation();

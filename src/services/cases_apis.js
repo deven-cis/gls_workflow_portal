@@ -81,9 +81,7 @@ export const casesAPI = {
     return data;
   },
 
-  // Get pending tasks from backend with pagination
-  // page: page number (default: 1)
-  // pageSize: items per page (default: 5)
+  
   getPendingTasks: async (page = 1, pageSize = 5) => {
     try {
       const params = new URLSearchParams();
@@ -93,7 +91,7 @@ export const casesAPI = {
       const response = await galloInstance(
         `${endpoints.jobs.pending()}?${params.toString()}`
       );
-      
+      console.log("response---------------------------",response);
       // Handle error response
       if (!response || response.success === false) {
         console.log('No pending tasks found or backend error:', response?.message || 'Unknown error');
@@ -110,7 +108,7 @@ export const casesAPI = {
         };
       }
       
-      // Map pagination from backend (snake_case) to frontend (camelCase)
+      
       const backendPagination = response.pagination || {};
       const pagination = {
         page: backendPagination.page || page,

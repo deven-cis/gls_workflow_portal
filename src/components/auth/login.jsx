@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { authAPI } from '@/services/api';
 import { setUser } from '@/lib/auth';
+import { ROUTES } from '@/lib/routes';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -49,7 +50,7 @@ export default function LoginPage() {
                 
                 // Redirect to dashboard on successful login
                 console.log('Redirecting to dashboard...');
-                router.push('/dashboard/list_of_tasks');
+                router.push(ROUTES.DASHBOARD.LIST_OF_TASKS);
             } else {
                 console.log('No access token in response');
                 throw new Error('No access token received');

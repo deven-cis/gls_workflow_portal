@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import dynamic from 'next/dynamic';
 import Header from '@/components/layouts/Header';
 import { ToastProvider } from '@/contexts/ToastContext';
+import { ROUTES } from '@/lib/routes';
 
 // Dynamically import Sidebar with SSR disabled
 const Sidebar = dynamic(() => import('./Sidebar'), { ssr: false });
@@ -26,15 +27,15 @@ export default function LayoutWrapper({ children }) {
         // Public routes (no auth required)
         // NOTE: do NOT use startsWith('/') because it would match every route.
         const isPublic =
-            pathname === '/' ||
-            pathname === '/auth' ||
-            pathname === '/auth/login' ||
+            pathname === ROUTES.ROOT ||
+            pathname === ROUTES.AUTH.ROOT ||
+            pathname === ROUTES.AUTH.LOGIN ||
             pathname?.startsWith('/auth/');
         try {
             // Lazy import to avoid circular imports at module evaluation time
             const { isAuthenticated } = require('@/lib/auth');
             if (!isPublic && !isAuthenticated()) {
-                router.push('/auth/login');
+                router.push(ROUTES.AUTH.LOGIN);
             }
         } catch (e) {
             // If import fails, don't block rendering — fail open.

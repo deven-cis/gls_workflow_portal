@@ -23,6 +23,7 @@ import { useAttorneyManagement } from '@/hooks/useAttorneyManagement';
 import { useBillingManagement } from '@/hooks/useBillingManagement';
 import { useEquipmentManagement } from '@/hooks/useEquipmentManagement';
 import { useSessionManagement } from '@/hooks/useSessionManagement';
+import { ROUTES } from '@/lib/routes';
 
 export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     const params = useParams();
@@ -443,7 +444,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                 
                 // Redirect to tasks list after a short delay to show the toast
                 setTimeout(() => {
-                    router.push('/dashboard/list_of_tasks');
+                    router.push(ROUTES.DASHBOARD.LIST_OF_TASKS);
                 }, 500);
             } else {
                 const errorMessage = response?.message || 'Failed to cancel job';

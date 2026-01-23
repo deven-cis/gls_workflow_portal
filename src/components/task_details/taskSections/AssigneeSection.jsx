@@ -6,6 +6,7 @@ import { getInitials } from '@/lib/utils';
 import { assigneeAPI } from '@/services/assignee_apis';
 import { useEffectiveJobNo } from '@/hooks/useJobContext';
 import ReassignmentModal from './ReassignmentModal';
+import { ROUTES } from '@/lib/routes';
 
 // Format time as "h:mm am/pm"
 const formatTime = (dateString) => {
@@ -78,7 +79,7 @@ export default function AssigneeSection({ jobNo: jobNoProp, toast, isUpcomingTas
             if (response.success) {
                 toast?.success(`Job reassigned to ${selectedAssignee.name}`);
                 setSelectedAssignee(null);
-                router.push('/dashboard/list_of_tasks');
+                router.push(ROUTES.DASHBOARD.LIST_OF_TASKS);
             } else {
                 toast?.error('Failed to reassign job');
             }

@@ -157,11 +157,20 @@ export default function MyTasks() {
         
         let cleanupFn = null;
         let scrollTimeout = null;
+        let setupTimeout = null;
+        let retryCount = 0;
+        const MAX_RETRIES = 10;
         
-        const setupTimeout = setTimeout(() => {
+        const trySetup = () => {
             const container = containerRef.current;
             if (!container) {
-                console.log(`${sectionName}: Container ref not available`);
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    console.log(`${sectionName}: Container ref not available, retrying... (${retryCount}/${MAX_RETRIES})`);
+                    setupTimeout = setTimeout(trySetup, 100);
+                } else {
+                    console.warn(`${sectionName}: Container ref not available after ${MAX_RETRIES} retries`);
+                }
                 return;
             }
 
@@ -217,10 +226,12 @@ export default function MyTasks() {
                 handlerRef.current = null;
                 console.log(`${sectionName}: Scroll handler removed`);
             };
-        }, 300);
+        };
+        trySetup();
 
         return () => {
             clearTimeout(setupTimeout);
+            clearTimeout(scrollTimeout);
             if (cleanupFn) cleanupFn();
         };
     }, [initialLoadComplete, loading]);

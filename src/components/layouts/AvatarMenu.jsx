@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { logout } from '@/lib/auth';
 import { LogOut } from 'lucide-react';
 import { getInitials } from '@/lib/utils';
+import { ROUTES } from '@/lib/routes';
 
 export default function AvatarMenu({
     name = 'Jakir Hossen',
@@ -21,7 +22,7 @@ export default function AvatarMenu({
     const handleLogout = () => {
         setOpen(false);
         logout();
-        router.push('/auth/login');
+        router.push(ROUTES.AUTH.LOGIN);
     };
 
     return (
