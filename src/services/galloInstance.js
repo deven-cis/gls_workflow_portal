@@ -38,7 +38,7 @@ async function refreshAccessToken() {
         console.log('Refreshing access token...');
         
         // Direct API call to refresh endpoint
-        const response = await fetch(`${API_BASE_URL}/api/refresh-token`, {
+        const response = await fetch(`${API_BASE_URL}/refresh-token`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
