@@ -24,6 +24,14 @@ export const useAttorneyManagement = (toast) => {
     
     // Ref to track ongoing save operations to prevent duplicate API calls
     const savingRef = useRef(new Set());
+    
+    // Ref to store current attorney sections for synchronous access
+    const attorneySectionsRef = useRef(attorneySections);
+    
+    // Keep ref in sync with state
+    useEffect(() => {
+        attorneySectionsRef.current = attorneySections;
+    }, [attorneySections]);
 
     // Fetch attorneys from backend when jobId is available
     useEffect(() => {
@@ -194,16 +202,19 @@ export const useAttorneyManagement = (toast) => {
             return;
         }
         
-        // Get backendId BEFORE state update to prevent duplicate API calls
-        let backendIdToDelete = null;
+        // Get backendId from ref (synchronous access to current state)
+        const currentSections = attorneySectionsRef.current;
+        const section = currentSections.find(s => s.id === sectionId);
+        
+        if (!section) {
+            return;
+        }
+        
+        // Store backendId before removing from state
+        const backendIdToDelete = section.backendId;
+        
+        // Remove from local state
         setAttorneySections((prev) => {
-            const section = prev.find(s => s.id === sectionId);
-            if (!section) return prev;
-            
-            // Store backendId before removing from state
-            backendIdToDelete = section.backendId;
-            
-            // Remove from local state first
             const updated = prev.filter((s) => s.id !== sectionId);
             // If all attorneys are deleted, ensure at least one empty form remains
             const finalSections = updated.length === 0 
@@ -228,13 +239,13 @@ export const useAttorneyManagement = (toast) => {
             deletingRef.current.add(sectionId);
             
             attorneysAPI.deleteAttorney(backendIdToDelete)
-                .then(() => {
+                .then((response) => {
                     toast.success('Attorney deleted successfully');
                 })
                 .catch((err) => {
                     console.error('Failed to delete attorney:', err);
                     // Only show error if it's not a 404 (already deleted)
-                    if (err?.response?.status !== 404) {
+                    if (err?.response?.status !== 404 && err?.status !== 404) {
                         toast.error('Failed to delete attorney');
                     }
                 })
@@ -256,49 +267,41 @@ export const useAttorneyManagement = (toast) => {
             return;
         }
         
-        // Get section data BEFORE state update to prevent duplicate API calls
-        let sectionData = null;
-        let attorneyData = null;
-        let documentFile = null;
-        let shouldRemoveDocument = false;
-        let hasBackendId = false;
+        // Get section data directly from ref (synchronous access to current state)
+        const currentSections = attorneySectionsRef.current;
+        const section = currentSections.find(s => s.id === sectionId);
         
-        setAttorneySections((prev) => {
-            const section = prev.find(s => s.id === sectionId);
-            if (!section || !selectedJobId) {
-                setEditingAttorney(null);
-                return prev;
-            }
-            
-            // Store section data for API call (outside setState)
-            sectionData = section;
-            attorneyData = {
-                attorneyName: section.fields.attorneyName,
-                firmName: section.fields.firmName,
-                notes: section.fields.notes,
-                orderDetails: section.fields.orderDetails,
-            };
-            
-            // Get the first document file if it exists (for both create and update)
-            documentFile = section.documents.find(doc => doc.file)?.file || null;
-            
-            // Check if document was removed:
-            // - If section has backendId (existing attorney) 
-            // - AND documents array is empty (user removed it)
-            // - AND no new file uploaded
-            // Then we need to explicitly send empty document field to remove it
-            const isExistingAttorney = !!section.backendId;
-            const hasNewFile = !!documentFile;
-            const documentsNowEmpty = section.documents.length === 0;
-            // If it's an existing attorney with no documents now and no new file, assume document was removed
-            shouldRemoveDocument = isExistingAttorney && documentsNowEmpty && !hasNewFile;
-            
-            // CRITICAL: Check if backendId exists to determine if this is an update or create
-            // Use explicit check for backendId (not just truthy, but also not null/undefined)
-            hasBackendId = section.backendId != null && section.backendId !== undefined;
-            
-            return prev; // Don't update state here, just extract data
-        });
+        if (!section || !selectedJobId) {
+            setEditingAttorney(null);
+            return;
+        }
+        
+        // Extract data from section
+        const sectionData = section;
+        const attorneyData = {
+            attorneyName: section.fields.attorneyName,
+            firmName: section.fields.firmName,
+            notes: section.fields.notes,
+            orderDetails: section.fields.orderDetails,
+        };
+        
+        // Get the first document file if it exists (for both create and update)
+        const documentFile = section.documents.find(doc => doc.file)?.file || null;
+        
+        // Check if document was removed:
+        // - If section has backendId (existing attorney) 
+        // - AND documents array is empty (user removed it)
+        // - AND no new file uploaded
+        // Then we need to explicitly send empty document field to remove it
+        const isExistingAttorney = !!section.backendId;
+        const hasNewFile = !!documentFile;
+        const documentsNowEmpty = section.documents.length === 0;
+        // If it's an existing attorney with no documents now and no new file, assume document was removed
+        const shouldRemoveDocument = isExistingAttorney && documentsNowEmpty && !hasNewFile;
+        
+        // CRITICAL: Check if backendId exists to determine if this is an update or create
+        // Use explicit check for backendId (not just truthy, but also not null/undefined)
+        const hasBackendId = section.backendId != null && section.backendId !== undefined;
         
         // Validate we have the data
         if (!sectionData || !attorneyData || !selectedJobId) {

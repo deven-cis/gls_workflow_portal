@@ -10,9 +10,7 @@ import { getUser } from '@/lib/auth';
 import { casesAPI } from '@/services/cases_apis';
 import { useToast } from '@/contexts/ToastContext';
 
-const PAGE_SIZE = 4;
-const SCROLL_THRESHOLD = 100;
-const SCROLL_DEBOUNCE = 200;
+// Removed pagination constants - now loading all jobs at once
 
 const VIEW_STORAGE_KEY = 'myTasks_activeView';
 
@@ -60,198 +58,36 @@ export default function MyTasks() {
     const toast = useToast();
     const pendingScrollContainerRef = useRef(null);
     const upcomingScrollContainerRef = useRef(null);
-    const pendingPaginationRef = useRef(null);
-    const upcomingPaginationRef = useRef(null);
-    const loadMorePendingRef = useRef(null);
-    const loadMoreUpcomingRef = useRef(null);
-    const loadingPendingRef = useRef(false);
-    const loadingUpcomingRef = useRef(false);
-    const pendingScrollHandlerRef = useRef(null);
-    const upcomingScrollHandlerRef = useRef(null);
-
-    // Pagination state
-    const [pendingPagination, setPendingPagination] = useState({
-        page: 1,
-        pageSize: PAGE_SIZE,
-        total: 0,
-        totalPages: 0,
-        hasNext: false,
-        hasPrevious: false
-    });
-    const [upcomingPagination, setUpcomingPagination] = useState({
-        page: 1,
-        pageSize: PAGE_SIZE,
-        total: 0,
-        totalPages: 0,
-        hasNext: false,
-        hasPrevious: false
-    });
-
-    const [loadingPending, setLoadingPending] = useState(false);
-    const [loadingUpcoming, setLoadingUpcoming] = useState(false);
+    const scrollPositionRef = useRef({ pending: null, upcoming: null });
     
-    // Keep refs in sync with state
+    // Expose scrollPositionRef globally so TaskCard can access it
     useEffect(() => {
-        loadingPendingRef.current = loadingPending;
-        loadingUpcomingRef.current = loadingUpcoming;
-        pendingPaginationRef.current = pendingPagination;
-        upcomingPaginationRef.current = upcomingPagination;
-    }, [loadingPending, loadingUpcoming, pendingPagination, upcomingPagination]);
-
-    // Load more pending tasks
-    const loadMorePending = useCallback(async () => {
-        if (loadingPending || !pendingPagination.hasNext) return Promise.resolve();
-        
-        setLoadingPending(true);
-        try {
-            const nextPage = pendingPagination.page + 1;
-            const result = await casesAPI.getPendingTasks(nextPage, PAGE_SIZE);
-            const newTasks = result.tasks || [];
-            setPendingTasks(prev => [...prev, ...newTasks]);
-            setPendingPagination(result.pagination || pendingPagination);
-            return Promise.resolve();
-        } catch (err) {
-            console.error('Failed to load more pending tasks:', err);
-            return Promise.reject(err);
-        } finally {
-            setLoadingPending(false);
+        if (typeof window !== 'undefined') {
+            window.__scrollPositionRef = scrollPositionRef;
         }
-    }, [pendingPagination, loadingPending]);
-
-    // Load more upcoming tasks
-    const loadMoreUpcoming = useCallback(async () => {
-        if (loadingUpcoming || !upcomingPagination.hasNext) return Promise.resolve();
-        
-        setLoadingUpcoming(true);
-        try {
-            const nextPage = upcomingPagination.page + 1;
-            const result = await casesAPI.getUpcomingTasks(nextPage, PAGE_SIZE);
-            const newTasks = result.tasks || [];
-            setUpcomingTasks(prev => [...prev, ...newTasks]);
-            setUpcomingPagination(result.pagination || upcomingPagination);
-            return Promise.resolve();
-        } catch (err) {
-            console.error('Failed to load more upcoming tasks:', err);
-            return Promise.reject(err);
-        } finally {
-            setLoadingUpcoming(false);
-        }
-    }, [upcomingPagination, loadingUpcoming]);
-
-    // Keep load functions in refs for stable access
-    useEffect(() => {
-        loadMorePendingRef.current = loadMorePending;
-        loadMoreUpcomingRef.current = loadMoreUpcoming;
-    }, [loadMorePending, loadMoreUpcoming]);
-
-    // Helper function to set up infinite scroll
-    const setupInfiniteScroll = useCallback(({
-        containerRef,
-        paginationRef,
-        loadingRef,
-        loadMoreRef,
-        handlerRef,
-        sectionName
-    }) => {
-        if (!initialLoadComplete) return () => {};
-        
-        let cleanupFn = null;
-        let scrollTimeout = null;
-        let setupTimeout = null;
-        let retryCount = 0;
-        const MAX_RETRIES = 10;
-        
-        const trySetup = () => {
-            const container = containerRef.current;
-            if (!container) {
-                if (retryCount < MAX_RETRIES) {
-                    retryCount++;
-                    console.log(`${sectionName}: Container ref not available, retrying... (${retryCount}/${MAX_RETRIES})`);
-                    setupTimeout = setTimeout(trySetup, 100);
-                } else {
-                    console.warn(`${sectionName}: Container ref not available after ${MAX_RETRIES} retries`);
-                }
-                return;
-            }
-
-            console.log(`${sectionName}: Setting up scroll handler`);
-            const stateRef = { isLoading: false, hasUserScrolled: false };
-
-            const checkAndLoadMore = () => {
-                const currentContainer = containerRef.current;
-                if (!currentContainer) return;
-                if (stateRef.isLoading) return;
-                
-                const currentPagination = paginationRef.current;
-                if (!currentPagination || !currentPagination.hasNext) return;
-                if (loadingRef.current || loading) return;
-                
-                const scrollTop = currentContainer.scrollTop;
-                if (scrollTop === 0 && !stateRef.hasUserScrolled) return;
-                
-                stateRef.hasUserScrolled = true;
-                const distanceFromBottom = currentContainer.scrollHeight - scrollTop - currentContainer.clientHeight;
-
-                if (distanceFromBottom < SCROLL_THRESHOLD) {
-                    stateRef.isLoading = true;
-                    console.log(`${sectionName}: Loading more tasks via scroll...`, { distanceFromBottom, hasNext: currentPagination.hasNext });
-                    const loadFn = loadMoreRef.current;
-                    if (loadFn) {
-                        loadFn().finally(() => {
-                            setTimeout(() => { stateRef.isLoading = false; }, 1000);
-                        });
-                    } else {
-                        console.error(`${sectionName}: load function not available`);
-                        stateRef.isLoading = false;
-                    }
-                }
-            };
-
-            const handleScroll = () => {
-                const currentContainer = containerRef.current;
-                if (!currentContainer) return;
-                clearTimeout(scrollTimeout);
-                scrollTimeout = setTimeout(checkAndLoadMore, SCROLL_DEBOUNCE);
-            };
-
-            handlerRef.current = handleScroll;
-            container.addEventListener('scroll', handleScroll, { passive: true });
-            console.log(`${sectionName}: Scroll handler attached`);
-            
-            cleanupFn = () => {
-                clearTimeout(scrollTimeout);
-                if (container && handlerRef.current) {
-                    container.removeEventListener('scroll', handlerRef.current);
-                }
-                handlerRef.current = null;
-                console.log(`${sectionName}: Scroll handler removed`);
-            };
-        };
-        trySetup();
-
         return () => {
-            clearTimeout(setupTimeout);
-            clearTimeout(scrollTimeout);
-            if (cleanupFn) cleanupFn();
+            if (typeof window !== 'undefined') {
+                delete window.__scrollPositionRef;
+            }
         };
-    }, [initialLoadComplete, loading]);
+    }, []);
+
+    // Removed pagination state and infinite scroll logic - now loading all jobs at once
 
 
-    // Initial load
+    // Initial load - fetch all jobs at once (no pagination)
     useEffect(() => {
         const loadInitialTasks = async () => {
             setLoading(true);
             setError(null);
             try {
                 const [pendingResult, upcomingResult] = await Promise.all([
-                    casesAPI.getPendingTasks(1, PAGE_SIZE),
-                    casesAPI.getUpcomingTasks(1, PAGE_SIZE),
+                    casesAPI.getPendingTasks(null, null), // null = get all jobs
+                    casesAPI.getUpcomingTasks(null, null), // null = get all jobs
                 ]);
                 
-                setPendingTasks((pendingResult.tasks || []).slice(0, PAGE_SIZE));
-                setPendingPagination(pendingResult.pagination || pendingPagination);
-                setUpcomingTasks((upcomingResult.tasks || []).slice(0, PAGE_SIZE));
-                setUpcomingPagination(upcomingResult.pagination || upcomingPagination);
+                setPendingTasks(pendingResult.tasks || []);
+                setUpcomingTasks(upcomingResult.tasks || []);
                 
                 setTimeout(() => setInitialLoadComplete(true), 500);
             } catch (err) {
@@ -264,51 +100,23 @@ export default function MyTasks() {
         loadInitialTasks();
     }, []);
 
-    // Set up infinite scroll for pending section
-    useEffect(() => {
-        return setupInfiniteScroll({
-            containerRef: pendingScrollContainerRef,
-            paginationRef: pendingPaginationRef,
-            loadingRef: loadingPendingRef,
-            loadMoreRef: loadMorePendingRef,
-            handlerRef: pendingScrollHandlerRef,
-            sectionName: 'Pending'
-        });
-    }, [setupInfiniteScroll]);
-
-    // Set up infinite scroll for upcoming section
-    useEffect(() => {
-        return setupInfiniteScroll({
-            containerRef: upcomingScrollContainerRef,
-            paginationRef: upcomingPaginationRef,
-            loadingRef: loadingUpcomingRef,
-            loadMoreRef: loadMoreUpcomingRef,
-            handlerRef: upcomingScrollHandlerRef,
-            sectionName: 'Upcoming'
-        });
-    }, [setupInfiniteScroll]);
-
-    // Re-attach handlers after state updates to ensure they persist through re-renders
-    useEffect(() => {
-        if (!initialLoadComplete) return;
-        
-        const reattachHandler = (containerRef, handlerRef) => {
-            const container = containerRef.current;
-            if (container && handlerRef.current) {
-                const oldHandler = handlerRef.current;
-                container.removeEventListener('scroll', oldHandler);
-                container.addEventListener('scroll', oldHandler, { passive: true });
-            }
-        };
-        
-        reattachHandler(pendingScrollContainerRef, pendingScrollHandlerRef);
-        reattachHandler(upcomingScrollContainerRef, upcomingScrollHandlerRef);
-    }, [pendingTasks.length, upcomingTasks.length, initialLoadComplete]);
+    // Removed infinite scroll setup - all jobs are loaded at once
 
     useEffect(() => {
         const taskId = searchParams.get('selected');
         if (taskId) setSelectedTaskId(taskId);
     }, [searchParams]);
+    
+    // Save scroll positions before selectedTaskId changes
+    useEffect(() => {
+        // Save scroll positions before re-render
+        if (pendingScrollContainerRef.current) {
+            scrollPositionRef.current.pending = pendingScrollContainerRef.current.scrollTop;
+        }
+        if (upcomingScrollContainerRef.current) {
+            scrollPositionRef.current.upcoming = upcomingScrollContainerRef.current.scrollTop;
+        }
+    }, [selectedTaskId]);
 
     // Sync view with URL parameter when it changes
     useEffect(() => {
@@ -362,9 +170,10 @@ export default function MyTasks() {
     };
 
     // Scrollable section component
-    const ScrollableSection = ({ containerRef, tasks, pagination, loadMore, loadingState, emptyMessage, children }) => {
+    const ScrollableSection = ({ containerRef, tasks, emptyMessage, children }) => {
         const innerRef = useRef(null);
         const [hasOverflow, setHasOverflow] = useState(false);
+        const restoredScrollRef = useRef(null); // Track recently restored scroll position
         
         // Hide scrollbar when content doesn't overflow
         useEffect(() => {
@@ -373,7 +182,45 @@ export default function MyTasks() {
             const container = containerRef.current;
             const inner = innerRef.current;
             
+            // Determine which section this is (pending or upcoming)
+            const isPending = containerRef === pendingScrollContainerRef;
+            const sectionKey = isPending ? 'pending' : 'upcoming';
+            
+            // Restore scroll position if we have a saved one
+            // window.__scrollPositionRef is the ref object, so we need to read .current
+            const savedScroll = scrollPositionRef.current[sectionKey] ?? 
+                               (typeof window !== 'undefined' && window.__scrollPositionRef?.current?.[sectionKey]) ?? 
+                               null;
+            
+            if (savedScroll !== null && savedScroll > 0) {
+                // Store the restored scroll position to prevent checkOverflow from resetting it
+                restoredScrollRef.current = savedScroll;
+                // Use multiple requestAnimationFrame calls to ensure DOM is ready
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        if (container.scrollTop !== savedScroll) {
+                            container.scrollTop = savedScroll;
+                        }
+                        // Clear after restore (but keep restoredScrollRef for a bit to prevent reset)
+                        scrollPositionRef.current[sectionKey] = null;
+                        if (typeof window !== 'undefined' && window.__scrollPositionRef?.current) {
+                            window.__scrollPositionRef.current[sectionKey] = null;
+                        }
+                        // Clear restoredScrollRef after a delay to allow checkOverflow to preserve it
+                        setTimeout(() => {
+                            restoredScrollRef.current = null;
+                        }, 1000);
+                    });
+                });
+            }
+            
             const checkOverflow = () => {
+                // Preserve scroll position before making any changes
+                // If we recently restored scroll, use that instead of current scrollTop
+                const savedScrollTop = restoredScrollRef.current !== null && restoredScrollRef.current > 0 
+                    ? restoredScrollRef.current 
+                    : container.scrollTop;
+                
                 // Check if content actually overflows the container
                 // Add 5px tolerance to account for rounding and border differences
                 const scrollHeight = inner.scrollHeight;
@@ -382,14 +229,25 @@ export default function MyTasks() {
                 
                 setHasOverflow(overflow);
                 
+                const currentOverflowY = container.style.overflowY;
                 if (overflow) {
-                    container.style.overflowY = 'auto';
-                    container.style.overflowX = 'hidden';
-                    container.classList.add('custom-scrollbar');
+                    if (currentOverflowY !== 'auto') {
+                        container.style.overflowY = 'auto';
+                        container.style.overflowX = 'hidden';
+                        container.classList.add('custom-scrollbar');
+                        // Restore scroll position after style change
+                        requestAnimationFrame(() => {
+                            if (container.scrollTop !== savedScrollTop) {
+                                container.scrollTop = savedScrollTop;
+                            }
+                        });
+                    }
                 } else {
-                    container.style.overflowY = 'hidden';
-                    container.style.overflowX = 'hidden';
-                    container.classList.remove('custom-scrollbar');
+                    if (currentOverflowY !== 'hidden') {
+                        container.style.overflowY = 'hidden';
+                        container.style.overflowX = 'hidden';
+                        container.classList.remove('custom-scrollbar');
+                    }
                 }
             };
             
@@ -415,23 +273,17 @@ export default function MyTasks() {
                 clearTimeout(timeoutId3);
                 clearTimeout(timeoutId4);
             };
-        }, [tasks.length, selectedTaskId, loadingState, containerRef, children]);
+        }, [tasks.length, selectedTaskId, containerRef, children]);
         
         return tasks.length > 0 ? (
             <div 
                 ref={containerRef}
+                data-section={containerRef === pendingScrollContainerRef ? 'pending' : 'upcoming'}
                 className={`max-h-[450px] overflow-x-hidden ${hasOverflow ? 'pr-2 custom-scrollbar' : ''}`}
                 style={hasOverflow ? { scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' } : { overflowX: 'hidden' }}
             >
                 <div ref={innerRef} className="space-y-3">
                     {children}
-                    {pagination.hasNext && (
-                        <div className="py-4 flex justify-center min-h-[50px]">
-                            {loadingState && (
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-                            )}
-                        </div>
-                    )}
                 </div>
             </div>
         ) : (
@@ -520,12 +372,10 @@ export default function MyTasks() {
                     <CalendarView userName={userName} showHero={false} />
                 ) : !loading && !error && activeView === 'list' ? (
                     <div className="space-y-6">
-                        <TaskSection title="Pending" count={pendingPagination.total || pendingTasks.length}>
+                        <TaskSection title="Pending" count={pendingTasks.length}>
                             <ScrollableSection
                                 containerRef={pendingScrollContainerRef}
                                 tasks={pendingTasks}
-                                pagination={pendingPagination}
-                                loadingState={loadingPending}
                                 emptyMessage="No pending jobs at the moment."
                             >
                                 {pendingTasks.map((task) => (
@@ -540,12 +390,10 @@ export default function MyTasks() {
                             </ScrollableSection>
                         </TaskSection>
 
-                        <TaskSection title="Upcoming" count={upcomingPagination.total || upcomingTasks.length}>
+                        <TaskSection title="Upcoming" count={upcomingTasks.length}>
                             <ScrollableSection
                                 containerRef={upcomingScrollContainerRef}
                                 tasks={upcomingTasks}
-                                pagination={upcomingPagination}
-                                loadingState={loadingUpcoming}
                                 emptyMessage="No upcoming jobs at the moment."
                             >
                                 {upcomingTasks.map((task) => (

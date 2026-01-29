@@ -82,64 +82,73 @@ export const casesAPI = {
   },
 
   
-  getPendingTasks: async (page = 1, pageSize = 5) => {
+  getPendingTasks: async (page = null, pageSize = null) => {
     try {
       const params = new URLSearchParams();
-      params.append('page', page.toString());
-      params.append('page_size', pageSize.toString());
+      // Only add pagination params if both are provided
+      if (page !== null && pageSize !== null) {
+        params.append('page', page.toString());
+        params.append('page_size', pageSize.toString());
+      }
       
-      const response = await galloInstance(
-        `${endpoints.jobs.pending()}?${params.toString()}`
-      );
+      const queryString = params.toString();
+      const url = queryString ? `${endpoints.jobs.pending()}?${queryString}` : endpoints.jobs.pending();
+      const response = await galloInstance(url);
       console.log("response---------------------------",response);
       // Handle error response
       if (!response || response.success === false) {
         console.log('No pending tasks found or backend error:', response?.message || 'Unknown error');
         return {
           tasks: [],
-          pagination: {
+          pagination: page !== null && pageSize !== null ? {
             page: 1,
             pageSize: pageSize,
             total: 0,
             totalPages: 0,
             hasNext: false,
             hasPrevious: false
-          }
+          } : undefined
         };
       }
-      
-      
-      const backendPagination = response.pagination || {};
-      const pagination = {
-        page: backendPagination.page || page,
-        pageSize: backendPagination.page_size || pageSize,
-        total: backendPagination.total || 0,
-        totalPages: backendPagination.total_pages || 0,
-        hasNext: backendPagination.has_next || false,
-        hasPrevious: backendPagination.has_previous || false
-      };
       
       // Map jobs to task format
       const jobs = Array.isArray(response.result) ? response.result : [];
       const tasks = jobs.map(mapJobToTask);
       console.log("tasks---------------------------",tasks);
       
+      // If pagination was requested, include pagination object
+      if (page !== null && pageSize !== null && response.pagination) {
+        const backendPagination = response.pagination;
+        const pagination = {
+          page: backendPagination.page || page,
+          pageSize: backendPagination.page_size || pageSize,
+          total: backendPagination.total || 0,
+          totalPages: backendPagination.total_pages || 0,
+          hasNext: backendPagination.has_next || false,
+          hasPrevious: backendPagination.has_previous || false
+        };
+        return {
+          tasks: tasks,
+          pagination: pagination
+        };
+      }
+      
+      // No pagination - return all tasks
       return {
-        tasks: tasks,
-        pagination: pagination
+        tasks: tasks
       };
     } catch (err) {
       console.error('Failed to fetch pending tasks:', err);
       return {
         tasks: [],
-        pagination: {
+        pagination: page !== null && pageSize !== null ? {
           page: 1,
           pageSize: pageSize,
           total: 0,
           totalPages: 0,
           hasNext: false,
           hasPrevious: false
-        }
+        } : undefined
       };
     }
   },
@@ -165,66 +174,75 @@ export const casesAPI = {
     }
   },
 
-  // Get upcoming tasks from backend with pagination
-  // page: page number (default: 1)
-  // pageSize: items per page (default: 5)
-  getUpcomingTasks: async (page = 1, pageSize = 5) => {
+  // Get upcoming tasks from backend with optional pagination
+  // page: page number (null to get all jobs)
+  // pageSize: items per page (null to get all jobs)
+  getUpcomingTasks: async (page = null, pageSize = null) => {
     try {
       const params = new URLSearchParams();
-      params.append('page', page.toString());
-      params.append('page_size', pageSize.toString());
+      // Only add pagination params if both are provided
+      if (page !== null && pageSize !== null) {
+        params.append('page', page.toString());
+        params.append('page_size', pageSize.toString());
+      }
       
-      const response = await galloInstance(
-        `${endpoints.jobs.upcoming()}?${params.toString()}`
-      );
+      const queryString = params.toString();
+      const url = queryString ? `${endpoints.jobs.upcoming()}?${queryString}` : endpoints.jobs.upcoming();
+      const response = await galloInstance(url);
       
       // Handle error response
       if (!response || response.success === false) {
         console.log('No upcoming tasks found or backend error:', response?.message || 'Unknown error');
         return {
           tasks: [],
-          pagination: {
+          pagination: page !== null && pageSize !== null ? {
             page: 1,
             pageSize: pageSize,
             total: 0,
             totalPages: 0,
             hasNext: false,
             hasPrevious: false
-          }
+          } : undefined
         };
       }
-      
-      // Map pagination from backend (snake_case) to frontend (camelCase)
-      const backendPagination = response.pagination || {};
-      const pagination = {
-        page: backendPagination.page || page,
-        pageSize: backendPagination.page_size || pageSize,
-        total: backendPagination.total || 0,
-        totalPages: backendPagination.total_pages || 0,
-        hasNext: backendPagination.has_next || false,
-        hasPrevious: backendPagination.has_previous || false
-      };
       
       // Map jobs to task format
       const jobs = Array.isArray(response.result) ? response.result : [];
       const tasks = jobs.map(mapJobToTask);
       
+      // If pagination was requested, include pagination object
+      if (page !== null && pageSize !== null && response.pagination) {
+        const backendPagination = response.pagination;
+        const pagination = {
+          page: backendPagination.page || page,
+          pageSize: backendPagination.page_size || pageSize,
+          total: backendPagination.total || 0,
+          totalPages: backendPagination.total_pages || 0,
+          hasNext: backendPagination.has_next || false,
+          hasPrevious: backendPagination.has_previous || false
+        };
+        return {
+          tasks: tasks,
+          pagination: pagination
+        };
+      }
+      
+      // No pagination - return all tasks
       return {
-        tasks: tasks,
-        pagination: pagination
+        tasks: tasks
       };
     } catch (err) {
       console.error('Failed to fetch upcoming tasks:', err);
       return {
         tasks: [],
-        pagination: {
+        pagination: page !== null && pageSize !== null ? {
           page: 1,
           pageSize: pageSize,
           total: 0,
           totalPages: 0,
           hasNext: false,
           hasPrevious: false
-        }
+        } : undefined
       };
     }
   },

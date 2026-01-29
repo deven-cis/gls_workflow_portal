@@ -6,7 +6,8 @@ import {
     validateWitnesses,
     validateAttorneys,
     validateBillings,
-    validateEquipmentTime
+    validateEquipmentTime,
+    formatTime12Hour
 } from '@/lib/utils';
 import CaseDetails from '@/components/task_details/taskSections/CaseDetails';
 import WitnessManagement from '@/components/task_details/taskSections/WitnessManagement';
@@ -237,10 +238,16 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
             }
 
             try {
-                // Try to get job from pending tasks first
-                // Load first page (5 items) - if not found, we might need to search more pages
-                const pendingResult = await casesAPI.getPendingTasks(1, 5);
+                // Get all jobs from pending and upcoming (no pagination)
+                const [pendingResult, upcomingResult] = await Promise.all([
+                    casesAPI.getPendingTasks(null, null), // null = get all jobs
+                    casesAPI.getUpcomingTasks(null, null), // null = get all jobs
+                ]);
+                
                 const pendingTasks = pendingResult.tasks || [];
+                const upcomingTasks = upcomingResult.tasks || [];
+                
+                // Try to find job in pending tasks first
                 const foundJob = pendingTasks.find(t => t.id === selectedJobId || t.jobId === `Job${selectedJobId}`);
                 
                 if (foundJob) {
@@ -257,8 +264,6 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                 }
 
                 // If not found in pending, try upcoming tasks
-                const upcomingResult = await casesAPI.getUpcomingTasks(1, 5);
-                const upcomingTasks = upcomingResult.tasks || [];
                 const foundUpcomingJob = upcomingTasks.find(t => t.id === selectedJobId || t.jobId === `Job${selectedJobId}`);
                 
                 if (foundUpcomingJob) {
@@ -274,7 +279,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                     return;
                 }
 
-                // If still not found, construct from caseInfo
+                // If still not found, construct from caseInfo as fallback
                 if (caseInfo) {
                     const constructedTask = {
                         id: selectedJobId,

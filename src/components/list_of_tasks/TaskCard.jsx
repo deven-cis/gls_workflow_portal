@@ -181,7 +181,23 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
     }, [task.endTime, task.date, task.jobYear, isSessionStarted, isUpcoming]);
 
     // Memoize callbacks to prevent unnecessary re-renders
-    const handleCardClick = useCallback(() => {
+    const handleCardClick = useCallback((event) => {
+        // Save scroll positions BEFORE state update to prevent scroll reset
+        const cardElement = event?.currentTarget;
+        if (cardElement) {
+            // Find the scrollable container (ScrollableSection)
+            let scrollContainer = cardElement.closest('[class*="max-h-"]');
+            if (scrollContainer) {
+                const scrollTop = scrollContainer.scrollTop;
+                const sectionAttr = scrollContainer.getAttribute('data-section');
+                // Store in a global ref accessible by ScrollableSection
+                // window.__scrollPositionRef is the ref object, so we need to set .current
+                if (window.__scrollPositionRef && sectionAttr) {
+                    window.__scrollPositionRef.current[sectionAttr] = scrollTop;
+                }
+            }
+        }
+        
         onSelect?.(task.id);
         if (isSelected && task.caseInfo?.id) {
             navigate.toTaskDetails(task.caseInfo.id, { jobId: task.id });
