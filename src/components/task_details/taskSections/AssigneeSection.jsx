@@ -7,16 +7,43 @@ import { assigneeAPI } from '@/services/assignee_apis';
 import { useEffectiveJobNo } from '@/hooks/useJobContext';
 import ReassignmentModal from './ReassignmentModal';
 import { ROUTES } from '@/lib/routes';
+import { formatInTimezone, getClientTimezone, convertToTimezone } from '@/lib/timezone_util';
 
-// Format time as "h:mm am/pm"
+// Format date and time as "MMM DD, h:mm am/pm" with capitalized month
 const formatTime = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-    }).toLowerCase();
+    try {
+        const timezone = getClientTimezone();
+        // Convert to client timezone
+        const converted = convertToTimezone(dateString, timezone, 'EST');
+        if (converted) {
+            const formatted = converted.toFormat('MMM dd, h:mm a');
+            // Split by comma to separate date and time
+            const parts = formatted.split(', ');
+            if (parts.length === 2) {
+                // Keep month capitalized, lowercase time
+                return `${parts[0]}, ${parts[1].toLowerCase()}`;
+            }
+            return formatted;
+        }
+        // Fallback if conversion fails
+        const formatted = formatInTimezone(dateString, timezone, 'MMM dd, h:mm a');
+        const parts = formatted.split(', ');
+        if (parts.length === 2) {
+            return `${parts[0]}, ${parts[1].toLowerCase()}`;
+        }
+        return formatted;
+    } catch (error) {
+        // Fallback to basic formatting
+        const date = new Date(dateString);
+        const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        const timeStr = date.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true 
+        }).toLowerCase();
+        return `${dateStr}, ${timeStr}`;
+    }
 };
 
 export default function AssigneeSection({ jobNo: jobNoProp, toast, isUpcomingTask = false, sessionStartTime }) {

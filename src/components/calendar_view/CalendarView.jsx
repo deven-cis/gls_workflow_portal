@@ -3,6 +3,8 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronLeft, ChevronRight, Clock, X, MapPin, Calendar as CalendarIcon, Lock, ExternalLink } from 'lucide-react';
 import { calendarAPI } from '@/services/calendar_apis';
+import { DateTime } from 'luxon';
+import { getClientTimezone, convertToTimezone } from '@/lib/timezone_util';
 
 // Format video_status object to string for tooltip
 const formatVideoStatus = (videoStatus) => {
@@ -383,89 +385,173 @@ export default function CalendarView({
     };
   }, [events]);
 
-  // Navigate months/weeks
+  // Navigate months/weeks - using client timezone
   const navigateDate = (direction) => {
     setCurrentDate(prev => {
-      const newDate = new Date(prev);
-      if (viewMode === 'month') {
-        newDate.setMonth(prev.getMonth() + direction);
-      } else {
-        newDate.setDate(prev.getDate() + (direction * 7));
+      try {
+        const clientTimezone = getClientTimezone();
+        
+        // Convert current date to client timezone
+        const prevDt = DateTime.fromJSDate(prev, { zone: 'UTC' }).setZone(clientTimezone);
+        
+        let newDt;
+        if (viewMode === 'month') {
+          // Navigate by month in client timezone
+          newDt = prevDt.plus({ months: direction });
+        } else {
+          // Navigate by week (7 days) in client timezone
+          newDt = prevDt.plus({ days: direction * 7 });
+        }
+        
+        return newDt.toJSDate();
+      } catch (error) {
+        console.warn('Error navigating date with timezone:', error);
+        // Fallback to basic navigation
+        const newDate = new Date(prev);
+        if (viewMode === 'month') {
+          newDate.setMonth(prev.getMonth() + direction);
+        } else {
+          newDate.setDate(prev.getDate() + (direction * 7));
+        }
+        return newDate;
       }
-      return newDate;
     });
   };
 
-  // Get week dates - week starts on Monday
+  // Get week dates - week starts on Monday, calculated in client timezone
   const weekDates = useMemo(() => {
     const dates = [];
     
-    // Clone currentDate and normalize to midnight
-    const current = new Date(currentDate);
-    current.setHours(0, 0, 0, 0);
-    
-    // Get day of week (0=Sun, 1=Mon, ..., 6=Sat)
-    const dayOfWeek = current.getDay();
-    
-    // Calculate days to subtract to get to Monday
-    // Monday = 1, so we go back (dayOfWeek - 1) days
-    // Special case: Sunday (0) means go back 6 days to previous Monday
-    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    
-    // Calculate Monday's date by subtracting days
-    const monday = new Date(current);
-    monday.setDate(current.getDate() - daysFromMonday);
-    monday.setHours(0, 0, 0, 0);
-    
-    // Generate 7 days starting from Monday
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(monday);
-      date.setDate(monday.getDate() + i);
-      date.setHours(0, 0, 0, 0);
-      dates.push(date);
+    try {
+      const clientTimezone = getClientTimezone();
+      
+      // Convert currentDate to client timezone
+      const currentDt = DateTime.fromJSDate(currentDate, { zone: 'UTC' }).setZone(clientTimezone);
+      const current = currentDt.startOf('day').toJSDate();
+      
+      // Get day of week (0=Sun, 1=Mon, ..., 6=Sat)
+      const dayOfWeek = current.getDay();
+      
+      // Calculate days to subtract to get to Monday
+      // Monday = 1, so we go back (dayOfWeek - 1) days
+      // Special case: Sunday (0) means go back 6 days to previous Monday
+      const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      
+      // Calculate Monday's date by subtracting days in client timezone
+      const mondayDt = currentDt.minus({ days: daysFromMonday });
+      const monday = mondayDt.startOf('day').toJSDate();
+      
+      // Generate 7 days starting from Monday in client timezone
+      for (let i = 0; i < 7; i++) {
+        const dateDt = mondayDt.plus({ days: i });
+        dates.push(dateDt.startOf('day').toJSDate());
+      }
+    } catch (error) {
+      console.warn('Error calculating week dates with timezone:', error);
+      // Fallback to basic calculation
+      const current = new Date(currentDate);
+      current.setHours(0, 0, 0, 0);
+      const dayOfWeek = current.getDay();
+      const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      const monday = new Date(current);
+      monday.setDate(current.getDate() - daysFromMonday);
+      monday.setHours(0, 0, 0, 0);
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(monday);
+        date.setDate(monday.getDate() + i);
+        date.setHours(0, 0, 0, 0);
+        dates.push(date);
+      }
     }
     
     return dates;
   }, [currentDate]);
 
-  // Get month calendar grid
+  // Get month calendar grid - calculated in client timezone
   const monthCalendar = useMemo(() => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
+    try {
+      const clientTimezone = getClientTimezone();
+      
+      // Convert currentDate to client timezone
+      const currentDt = DateTime.fromJSDate(currentDate, { zone: 'UTC' }).setZone(clientTimezone);
+      const year = currentDt.year;
+      const month = currentDt.month; // 1-12
+      
+      const firstDay = currentDt.startOf('month');
+      const lastDay = currentDt.endOf('month');
+      const daysInMonth = lastDay.day; // Day of month (1-31)
+      const startingDayOfWeek = firstDay.weekday === 7 ? 0 : firstDay.weekday; // Convert Sunday from 7 to 0
 
-    const calendar = [];
-    let currentWeek = [];
+      const calendar = [];
+      let currentWeek = [];
 
-    // Add previous month's trailing days
-    const prevMonth = new Date(year, month, 0);
-    const daysInPrevMonth = prevMonth.getDate();
-    for (let i = startingDayOfWeek - 1; i >= 0; i--) {
-      currentWeek.push(new Date(year, month - 1, daysInPrevMonth - i));
-    }
+      // Add previous month's trailing days
+      const prevMonth = firstDay.minus({ days: 1 });
+      const daysInPrevMonth = prevMonth.day;
+      for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+        const dateDt = prevMonth.minus({ days: i });
+        currentWeek.push(dateDt.startOf('day').toJSDate());
+      }
 
-    // Add current month's days
-    for (let day = 1; day <= daysInMonth; day++) {
-      currentWeek.push(new Date(year, month, day));
-      if (currentWeek.length === 7) {
+      // Add current month's days
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dateDt = currentDt.set({ day });
+        currentWeek.push(dateDt.startOf('day').toJSDate());
+        if (currentWeek.length === 7) {
+          calendar.push(currentWeek);
+          currentWeek = [];
+        }
+      }
+
+      // Add next month's leading days
+      if (currentWeek.length > 0) {
+        const remainingDays = 7 - currentWeek.length;
+        const nextMonth = lastDay.plus({ days: 1 });
+        for (let day = 1; day <= remainingDays; day++) {
+          const dateDt = nextMonth.set({ day });
+          currentWeek.push(dateDt.startOf('day').toJSDate());
+        }
         calendar.push(currentWeek);
-        currentWeek = [];
       }
-    }
 
-    // Add next month's leading days
-    if (currentWeek.length > 0) {
-      const remainingDays = 7 - currentWeek.length;
-      for (let day = 1; day <= remainingDays; day++) {
-        currentWeek.push(new Date(year, month + 1, day));
+      return calendar;
+    } catch (error) {
+      console.warn('Error calculating month calendar with timezone:', error);
+      // Fallback to basic calculation
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const daysInMonth = lastDay.getDate();
+      const startingDayOfWeek = firstDay.getDay();
+
+      const calendar = [];
+      let currentWeek = [];
+
+      const prevMonth = new Date(year, month, 0);
+      const daysInPrevMonth = prevMonth.getDate();
+      for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+        currentWeek.push(new Date(year, month - 1, daysInPrevMonth - i));
       }
-      calendar.push(currentWeek);
-    }
 
-    return calendar;
+      for (let day = 1; day <= daysInMonth; day++) {
+        currentWeek.push(new Date(year, month, day));
+        if (currentWeek.length === 7) {
+          calendar.push(currentWeek);
+          currentWeek = [];
+        }
+      }
+
+      if (currentWeek.length > 0) {
+        const remainingDays = 7 - currentWeek.length;
+        for (let day = 1; day <= remainingDays; day++) {
+          currentWeek.push(new Date(year, month + 1, day));
+        }
+        calendar.push(currentWeek);
+      }
+
+      return calendar;
+    }
   }, [currentDate]);
 
   // Generate time slots for week view (8 AM to 11 PM)
@@ -593,7 +679,15 @@ export default function CalendarView({
             <ChevronLeft className="w-5 h-5 text-gray-700" />
           </button>
           <h3 className="text-lg font-semibold text-gray-900 min-w-[140px] text-center">
-            {MONTH_NAMES[currentDate.getMonth()]} - {currentDate.getFullYear()}
+            {(() => {
+              try {
+                const clientTimezone = getClientTimezone();
+                const currentDt = DateTime.fromJSDate(currentDate, { zone: 'UTC' }).setZone(clientTimezone);
+                return `${MONTH_NAMES[currentDt.month - 1]} - ${currentDt.year}`;
+              } catch (error) {
+                return `${MONTH_NAMES[currentDate.getMonth()]} - ${currentDate.getFullYear()}`;
+              }
+            })()}
           </h3>
           <button
             onClick={() => navigateDate(1)}
@@ -946,7 +1040,9 @@ function MonthView({ monthCalendar, currentDate, getEventsForDate, formatTime, g
           <div key={weekIndex} className="grid grid-cols-7">
             {week.map((date, dayIndex) => {
               const isCurrentMonth = date.getMonth() === currentDate.getMonth();
-              const isToday = isSameDate(date, new Date());
+              // Check if today in client timezone
+              const todayInClientTz = DateTime.now().setZone(getClientTimezone()).startOf('day').toJSDate();
+              const isToday = isSameDate(date, todayInClientTz);
               const events = getEventsForDate(date);
 
               return (

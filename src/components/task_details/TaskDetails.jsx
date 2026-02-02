@@ -102,7 +102,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         setShowEndSessionModal,
         handleStartSession,
         handleConfirmEndSession,
-        fetchSessionStatus
+        fetchSessionStatus,
+        isFetchingSession
     } = useSessionManagement(toast, isUpcomingTask, (status) => {
         // Callback to update task status when session status changes
         // Only update if status is different to prevent infinite loops
@@ -111,7 +112,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
             if (prev.status === status) return prev;
             return { ...prev, status };
         });
-    });
+    }, task?.status);
     const [showCancelModal, setShowCancelModal] = useState(false);
 
     // Case management is now handled by useCaseManagement hook
@@ -476,6 +477,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                     sessionStarted={sessionStarted}
                     sessionStartTime={sessionStartTime}
                     sessionDuration={sessionDuration}
+                    isFetchingSession={isFetchingSession}
                     onStartSession={handleStartSession}
                     onCancelJob={() => setShowCancelModal(true)}
                     toast={toast}

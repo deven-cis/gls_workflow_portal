@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { sessionAPI } from '@/services/session_button';
+import { DateTime } from 'luxon';
+import { getClientTimezone, convertToTimezone } from '@/lib/timezone_util';
 
 /**
  * Custom hook to manage all session-related state and operations
@@ -9,30 +11,100 @@ import { sessionAPI } from '@/services/session_button';
  * @param {Function} onStatusChange - Optional callback when session status changes (for updating task status)
  * @returns {Object} Session management state and handlers
  */
-export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChange = null) => {
+export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChange = null, initialTaskStatus = null) => {
     const params = useParams();
     const searchParams = useSearchParams();
     const selectedJobId = searchParams.get('jobId');
     const lastFetchedJobRef = useRef(null);
+    const loadingTimeoutRef = useRef(null);
+
+    // Initialize sessionStarted from task status if available
+    const getInitialSessionState = () => {
+        if (!initialTaskStatus) return false;
+        const normalized = initialTaskStatus.toLowerCase().trim().replace(/[_-]/g, ' ');
+        return normalized === 'session started';
+    };
 
     // Session state
-    const [sessionStarted, setSessionStarted] = useState(false);
+    const [sessionStarted, setSessionStarted] = useState(getInitialSessionState);
     const [sessionStartTime, setSessionStartTime] = useState(null);
     const [sessionDuration, setSessionDuration] = useState('00:00:00');
     const [showEndSessionModal, setShowEndSessionModal] = useState(false);
+    // Initialize isFetchingSession to true if status is "Session Started" to prevent flash
+    const [isFetchingSession, setIsFetchingSession] = useState(() => {
+        if (!initialTaskStatus) return false;
+        const normalized = initialTaskStatus.toLowerCase().trim().replace(/[_-]/g, ' ');
+        return normalized === 'session started';
+    });
 
-    // Format duration as HH:MM:SS
+    // Convert time to client timezone
+    const convertToClientTimezone = useCallback((timeString) => {
+        if (!timeString) return null;
+        
+        try {
+            const clientTimezone = getClientTimezone();
+            // Convert to client timezone
+            const converted = convertToTimezone(timeString, clientTimezone, 'EST');
+            return converted ? converted.toISO() : timeString;
+        } catch (error) {
+            console.warn('Error converting time to client timezone:', error);
+            return timeString; // Return original if conversion fails
+        }
+    }, []);
+
+    // Format duration as HH:MM:SS based on client timezone
     const formatDuration = useCallback((startTime) => {
         if (!startTime) return '00:00:00';
-        const now = new Date();
-        const start = new Date(startTime);
-        const diffMs = now - start;
         
-        const hours = Math.floor(diffMs / (1000 * 60 * 60));
-        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-        
-        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        try {
+            // Get client timezone
+            const clientTimezone = getClientTimezone();
+            
+            // Parse start time and convert to client timezone
+            let startDt = DateTime.fromISO(startTime);
+            
+            // If time doesn't have timezone info, assume EST and convert to client timezone
+            if (!startDt.zoneName || startDt.zoneName === 'EST') {
+                startDt = convertToTimezone(startTime, clientTimezone, 'EST');
+            } else {
+                // Already has timezone, convert to client timezone
+                startDt = startDt.setZone(clientTimezone);
+            }
+            
+            // Get current time in client timezone
+            const nowDt = DateTime.now().setZone(clientTimezone);
+            
+            if (!startDt || !startDt.isValid || !nowDt.isValid) {
+                return '00:00:00';
+            }
+            
+            // Calculate duration difference in milliseconds
+            const diffMs = nowDt - startDt;
+            
+            if (diffMs < 0) {
+                return '00:00:00';
+            }
+            
+            // Calculate hours, minutes, seconds from milliseconds
+            const totalSeconds = Math.floor(diffMs / 1000);
+            const hours = Math.floor(totalSeconds / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const seconds = totalSeconds % 60;
+            
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        } catch (error) {
+            console.warn('Error calculating duration with timezone:', error);
+            // Fallback to basic calculation
+            const now = new Date();
+            const start = new Date(startTime);
+            const diffMs = now - start;
+            
+            const hours = Math.floor(diffMs / (1000 * 60 * 60));
+            const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+            
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
     }, []);
 
     // Handle start session
@@ -58,11 +130,14 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
         
         try {
             const result = await sessionAPI.startSession(jobNo);
-            const startTime = result?.start_time || new Date().toISOString();
+            const backendStartTime = result?.start_time || new Date().toISOString();
+            
+            // Convert to client timezone
+            const clientStartTime = convertToClientTimezone(backendStartTime) || backendStartTime;
             
             setSessionStarted(true);
-            setSessionStartTime(startTime);
-            setSessionDuration('00:00:00');
+            setSessionStartTime(clientStartTime);
+            setSessionDuration(formatDuration(clientStartTime));
             
             // Notify parent component of status change
             // Use 'session-started' to match original behavior
@@ -75,7 +150,7 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
             console.error('Failed to start session:', err);
             toast.error(err?.message || 'Failed to start session');
         }
-    }, [isUpcomingTask, sessionStarted, searchParams, params, selectedJobId, toast, onStatusChange]);
+    }, [isUpcomingTask, sessionStarted, searchParams, params, selectedJobId, toast, onStatusChange, convertToClientTimezone, formatDuration]);
 
     // Handle confirm end session
     const handleConfirmEndSession = useCallback(async () => {
@@ -112,12 +187,16 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
 
     // Fetch session status from backend
     const fetchSessionStatus = useCallback(async (task) => {
-        if (!task) return;
+        if (!task) {
+            setIsFetchingSession(false);
+            return;
+        }
 
         const jobIdParam = searchParams.get('jobId');
         const jobNo = Number(jobIdParam ?? params?.id ?? selectedJobId);
         
         if (!jobNo || Number.isNaN(jobNo)) {
+            setIsFetchingSession(false);
             return;
         }
 
@@ -129,11 +208,13 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
         // Prevent re-fetching if we've already fetched for this job
         // But allow fetch if we don't have sessionStartTime yet (needed for timer)
         if (lastFetchedJobRef.current === jobNo && sessionStartTime) {
+            setIsFetchingSession(false);
             return;
         }
 
         // Mark this job as fetched
         lastFetchedJobRef.current = jobNo;
+        setIsFetchingSession(true);
 
         try {
             const result = await sessionAPI.getSessionStartTime(jobNo);
@@ -147,6 +228,7 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
                     setSessionStarted(false);
                     setSessionStartTime(null);
                     setSessionDuration('00:00:00');
+                    setIsFetchingSession(false);
                     // Notify parent component of status change
                     if (onStatusChange) {
                         onStatusChange('Completed');
@@ -157,10 +239,24 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
                 // Handle SESSION_IN_PROGRESS status - JobStatusEnum.SESSION_IN_PROGRESS = "Session Started"
                 if (apiStatus === 'Session Started') {
                     if (result.result && typeof result.result === 'string') {
-                        // result is ISO string of start time
+                        // Clear any existing timeout
+                        if (loadingTimeoutRef.current) {
+                            clearTimeout(loadingTimeoutRef.current);
+                        }
+                        // Convert to client timezone
+                        const backendStartTime = result.result;
+                        const clientStartTime = convertToClientTimezone(backendStartTime) || backendStartTime;
+                        
                         setSessionStarted(true);
-                        setSessionStartTime(result.result);
-                        setSessionDuration('00:00:00'); // Initialize timer
+                        setSessionStartTime(clientStartTime);
+                        // Calculate duration immediately based on client timezone
+                        const calculatedDuration = formatDuration(clientStartTime);
+                        setSessionDuration(calculatedDuration);
+                        // Keep loading for 2 seconds for smooth transition
+                        loadingTimeoutRef.current = setTimeout(() => {
+                            setIsFetchingSession(false);
+                            loadingTimeoutRef.current = null;
+                        }, 2000); // 2 seconds delay
                         // Notify parent component of status change
                         if (onStatusChange) {
                             onStatusChange('Session Started');
@@ -168,6 +264,7 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
                     } else {
                         setSessionStarted(false);
                         setSessionStartTime(null);
+                        setIsFetchingSession(false);
                     }
                     return;
                 }
@@ -177,6 +274,7 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
                     setSessionStarted(false);
                     setSessionStartTime(null);
                     setSessionDuration('00:00:00');
+                    setIsFetchingSession(false);
                     // Notify parent component of status change
                     if (onStatusChange) {
                         onStatusChange('Session not started');
@@ -189,6 +287,7 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
                     setSessionStarted(false);
                     setSessionStartTime(null);
                     setSessionDuration('00:00:00');
+                    setIsFetchingSession(false);
                     // Notify parent component of status change
                     if (onStatusChange) {
                         onStatusChange('Scheduled');
@@ -200,13 +299,15 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
                 setSessionStarted(false);
                 setSessionStartTime(null);
                 setSessionDuration('00:00:00');
+                setIsFetchingSession(false);
             }
         } catch (err) {
             console.error('Failed to fetch session status:', err);
             setSessionStarted(false);
             setSessionStartTime(null);
+            setIsFetchingSession(false);
         }
-    }, [searchParams, params, selectedJobId, sessionStartTime, onStatusChange]);
+    }, [searchParams, params, selectedJobId, sessionStartTime, onStatusChange, isFetchingSession, formatDuration, convertToClientTimezone]);
 
     // Timer effect - updates duration every second when session is active
     useEffect(() => {
@@ -232,6 +333,7 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
         sessionStartTime,
         sessionDuration,
         showEndSessionModal,
+        isFetchingSession,
         
         // Setters
         setShowEndSessionModal,

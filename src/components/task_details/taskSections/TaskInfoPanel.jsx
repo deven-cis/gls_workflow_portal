@@ -56,6 +56,7 @@ export default function TaskInfoPanel({
     sessionStarted,
     sessionStartTime,
     sessionDuration,
+    isFetchingSession,
     onStartSession,
     onCancelJob,
     toast
@@ -86,6 +87,10 @@ export default function TaskInfoPanel({
     const isCompleted = task?.status === 'Completed' || 
                        (task?.status && task.status.toLowerCase().includes('completed'));
 
+    // Check if task status is "Session Started"
+    const isSessionStartedStatus = task?.status && 
+                                   normalizeStatus(task.status) === 'session started';
+
     if (!task) {
         return (
             <div className="w-full md:w-96 bg-white border-r border-gray-200 p-6 overflow-y-auto">
@@ -100,9 +105,15 @@ export default function TaskInfoPanel({
         <div className="w-full md:w-96 bg-white border-r border-gray-200 p-6 overflow-y-auto">
             {/* Status Badge & Menu */}
             <div className="flex items-center justify-between mb-4">
-                <span className={`px-3 py-1 text-sm font-medium rounded-lg ${getStatusBadgeStyle(task.status)}`}>
-                    {getStatusDisplayText(task.status)}
-                </span>
+                {isFetchingSession && isSessionStartedStatus ? (
+                    <span className="px-3 py-1 text-sm font-medium rounded-lg bg-gray-100 text-gray-600">
+                        Loading...
+                    </span>
+                ) : (
+                    <span className={`px-3 py-1 text-sm font-medium rounded-lg ${getStatusBadgeStyle(task.status)}`}>
+                        {getStatusDisplayText(task.status)}
+                    </span>
+                )}
                 <div className="relative" ref={menuRef}>
                     <button 
                         onClick={() => setShowMenu(!showMenu)}
@@ -166,11 +177,25 @@ export default function TaskInfoPanel({
                 >
                     Completed
                 </button>
+            ) : (isSessionStartedStatus && (isFetchingSession || !sessionStartTime)) ? (
+                <button 
+                    disabled
+                    className={`w-full font-semibold py-3 rounded-lg transition-all duration-300 mb-6 ${
+                        isUpcomingTask
+                            ? 'bg-gray-400 text-white cursor-not-allowed opacity-60'
+                            : 'bg-red-500 text-white'
+                    }`}
+                >
+                    <span className="flex items-center justify-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        <span>Loading...</span>
+                    </span>
+                </button>
             ) : sessionStarted ? (
                 <button 
                     onClick={onStartSession}
                     disabled={isUpcomingTask}
-                    className={`w-full font-semibold py-3 rounded-lg transition-colors mb-6 ${
+                    className={`w-full font-semibold py-3 rounded-lg transition-all duration-300 mb-6 ${
                         isUpcomingTask
                             ? 'bg-gray-400 text-white cursor-not-allowed opacity-60'
                             : 'bg-red-500 hover:bg-red-600 text-white'
