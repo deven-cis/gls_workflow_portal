@@ -285,7 +285,7 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                     {/* Status & Actions */}
                     <div className="flex flex-col items-end gap-1">
                         <div className="flex items-center gap-3">
-                            {!isUpcoming && task.video_status && SESSION_NOT_STARTED_STATUSES.has(task.status) && (
+                            {!isUpcoming && task.video_status && typeof task.video_status === 'object' && Object.keys(task.video_status).length > 0 && (
                                 <VideoPendingBadge isActive={isActive} videoStatus={task.video_status} />
                             )}
                             {!isUpcoming && task.status && <StatusBadge status={task.status} />}
