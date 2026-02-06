@@ -288,8 +288,16 @@ export default function HistoryDateRangePicker({
       </div>
 
       {/* Footer Buttons */}
-      <div className="px-5 py-4 border-t border-gray-100 flex justify-between items-center bg-gray-50">
-        <div className="text-xs text-gray-700 font-normal">
+      <div className={`px-5 py-4 border-t flex justify-between items-center transition-colors ${
+        tempStartDate && tempEndDate 
+          ? 'bg-blue-50 border-blue-200' 
+          : 'bg-gray-50 border-gray-100'
+      }`}>
+        <div className={`text-xs font-normal ${
+          tempStartDate && tempEndDate 
+            ? 'text-blue-900 font-medium' 
+            : 'text-gray-700'
+        }`}>
           {tempStartDate && tempEndDate ? (
             <span>
               {formatDateDisplay(tempStartDate)} To {formatDateDisplay(tempEndDate)}

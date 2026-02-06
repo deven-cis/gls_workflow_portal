@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Search, X } from 'lucide-react';
 import AvatarMenu from '@/components/layouts/AvatarMenu';
 import { historyAPI } from '@/services/history_apis';
 import { useToast } from '@/contexts/ToastContext';
@@ -57,6 +57,21 @@ export default function HistoryView() {
         hasNext: false,
         hasPrevious: false
     });
+    
+    // Search filters - separate for each tab
+    const [completedSearchFilters, setCompletedSearchFilters] = useState({
+        jobNo: '',
+        witnessName: '',
+        caseName: '',
+        caseNumber: ''
+    });
+    const [cancelledSearchFilters, setCancelledSearchFilters] = useState({
+        jobNo: '',
+        witnessName: '',
+        caseName: '',
+        caseNumber: ''
+    });
+    const [showSearchFilters, setShowSearchFilters] = useState(false);
 
 
     useEffect(() => {
@@ -82,7 +97,10 @@ export default function HistoryView() {
     // Get current pagination based on active tab
     const currentPagination = activeTab === 'completed' ? completedPagination : cancelledPagination;
 
-    // Fetch jobs based on active tab and date range
+    // Get current search filters based on active tab
+    const currentSearchFilters = activeTab === 'completed' ? completedSearchFilters : cancelledSearchFilters;
+
+    // Fetch jobs based on active tab, date range, and search filters
     useEffect(() => {
         const fetchJobs = async () => {
             setLoading(true);
@@ -92,8 +110,9 @@ export default function HistoryView() {
                 const currentEndDate = activeTab === 'completed' ? completedEndDate : cancelledEndDate;
                 const currentPage = activeTab === 'completed' ? completedPagination.page : cancelledPagination.page;
                 const pageSize = activeTab === 'completed' ? completedPagination.pageSize : cancelledPagination.pageSize;
+                const currentFilters = activeTab === 'completed' ? completedSearchFilters : cancelledSearchFilters;
                 
-                const result = await historyAPI.getJobsByType(type, currentStartDate, currentEndDate, currentPage, pageSize);
+                const result = await historyAPI.getJobsByType(type, currentStartDate, currentEndDate, currentPage, pageSize, currentFilters);
                 
                 // Debug: Log pagination data
                 console.log(`${type} jobs pagination:`, result.pagination);
@@ -119,7 +138,16 @@ export default function HistoryView() {
         };
 
         fetchJobs();
-    }, [activeTab, completedStartDate, completedEndDate, cancelledStartDate, cancelledEndDate, completedPagination.page, cancelledPagination.page]);
+    }, [activeTab, completedStartDate, completedEndDate, cancelledStartDate, cancelledEndDate, completedPagination.page, cancelledPagination.page, completedSearchFilters, cancelledSearchFilters]);
+    
+    // Reset pagination to page 1 when search filters change
+    useEffect(() => {
+        if (activeTab === 'completed') {
+            setCompletedPagination(prev => ({ ...prev, page: 1 }));
+        } else {
+            setCancelledPagination(prev => ({ ...prev, page: 1 }));
+        }
+    }, [completedSearchFilters, cancelledSearchFilters, activeTab]);
 
     const handleViewChange = (view) => {
         setActiveView(view);
@@ -152,11 +180,44 @@ export default function HistoryView() {
         // Scroll to top when page changes
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
+    
+    // Handle search filter changes
+    const handleSearchFilterChange = (field, value) => {
+        if (activeTab === 'completed') {
+            setCompletedSearchFilters(prev => ({ ...prev, [field]: value }));
+        } else {
+            setCancelledSearchFilters(prev => ({ ...prev, [field]: value }));
+        }
+    };
+    
+    // Clear all search filters
+    const handleClearSearchFilters = () => {
+        if (activeTab === 'completed') {
+            setCompletedSearchFilters({
+                jobNo: '',
+                witnessName: '',
+                caseName: '',
+                caseNumber: ''
+            });
+        } else {
+            setCancelledSearchFilters({
+                jobNo: '',
+                witnessName: '',
+                caseName: '',
+                caseNumber: ''
+            });
+        }
+    };
+    
+    // Check if any search filters are active
+    const hasActiveSearchFilters = () => {
+        const filters = activeTab === 'completed' ? completedSearchFilters : cancelledSearchFilters;
+        return !!(filters.jobNo || filters.witnessName || filters.caseName || filters.caseNumber);
+    };
 
     const handleDateChange = (start, end) => {
         // If both dates are provided, set them. Otherwise reset to null (no filter)
         // Apply to the currently active tab only
-        // Reset pagination to page 1 when date filter changes
         if (activeTab === 'completed') {
             if (start && end) {
                 setCompletedStartDate(start);
@@ -165,7 +226,6 @@ export default function HistoryView() {
                 setCompletedStartDate(null);
                 setCompletedEndDate(null);
             }
-            setCompletedPagination(prev => ({ ...prev, page: 1 }));
         } else {
             if (start && end) {
                 setCancelledStartDate(start);
@@ -174,7 +234,6 @@ export default function HistoryView() {
                 setCancelledStartDate(null);
                 setCancelledEndDate(null);
             }
-            setCancelledPagination(prev => ({ ...prev, page: 1 }));
         }
     };
 
@@ -240,8 +299,8 @@ export default function HistoryView() {
                     jobTitle: item.title,
                     location: item.location,
                     time: `${item.date} ${item.time}`,
-                    caseName: item.caseInfo?.name || item.title,
-                    caseNumber: item.caseInfo?.caseNumber || '',
+                    caseName: jobDetailsData.case_short_name || item.caseInfo?.name || item.title,
+                    caseNumber: jobDetailsData.case_number || item.caseInfo?.caseNumber || '',
                     attorneys: attorneys.map(a => ({
                         name: a.attorney_name || 'N/A',
                         firm: a.firm_name || 'N/A'
@@ -378,7 +437,11 @@ export default function HistoryView() {
                     <div className="relative" ref={calendarRef}>
                         <button
                             onClick={() => setShowCalendar(!showCalendar)}
-                            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium text-sm md:text-base"
+                            className={`flex items-center gap-2 font-medium text-sm md:text-base transition-colors rounded-lg px-3 py-2 ${
+                                startDate && endDate
+                                    ? 'bg-blue-50 text-blue-900 border border-blue-200 hover:bg-blue-100'
+                                    : 'text-gray-700 hover:text-gray-900'
+                            }`}
                         >
                             {formatDateRange()}
                             <ChevronDown size={16} />
@@ -395,6 +458,91 @@ export default function HistoryView() {
                             </div>
                         )}
                     </div>
+                </div>
+                
+                {/* Search Filters Section */}
+                <div className="mb-6">
+                    <div className="flex items-center justify-between mb-3">
+                        <button
+                            onClick={() => setShowSearchFilters(!showSearchFilters)}
+                            className="flex items-center gap-2 text-gray-700 hover:text-gray-900 font-medium text-sm md:text-base"
+                        >
+                            <Search size={18} />
+                            <span>Search Filters</span>
+                            <ChevronDown size={16} className={showSearchFilters ? 'rotate-180' : ''} />
+                        </button>
+                        {hasActiveSearchFilters() && (
+                            <button
+                                onClick={handleClearSearchFilters}
+                                className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
+                            >
+                                <X size={14} />
+                                <span>Clear All</span>
+                            </button>
+                        )}
+                    </div>
+                    
+                    {showSearchFilters && (
+                        <div className="bg-white border border-gray-200 rounded-lg p-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {/* Job Number Search */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Job Number
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={currentSearchFilters.jobNo}
+                                        onChange={(e) => handleSearchFilterChange('jobNo', e.target.value)}
+                                        placeholder="Search by Job Number"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                </div>
+                                
+                                {/* Witness Name Search */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Witness Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={currentSearchFilters.witnessName}
+                                        onChange={(e) => handleSearchFilterChange('witnessName', e.target.value)}
+                                        placeholder="Search by Witness Name"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                </div>
+                                
+                                {/* Case Name Search */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Case Name
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={currentSearchFilters.caseName}
+                                        onChange={(e) => handleSearchFilterChange('caseName', e.target.value)}
+                                        placeholder="Search by Case Name"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                </div>
+                                
+                                {/* Case Number Search */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Case Number
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={currentSearchFilters.caseNumber}
+                                        onChange={(e) => handleSearchFilterChange('caseNumber', e.target.value)}
+                                        placeholder="Search by Case Number"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {loading ? (

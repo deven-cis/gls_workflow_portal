@@ -37,8 +37,9 @@ export const historyAPI = {
   // startDate: Date object (optional)
   // endDate: Date object (optional)
   // page: page number (default: 1)
-  // pageSize: items per page (default: 10)
-  getJobsByType: async (type, startDate = null, endDate = null, page = 1, pageSize = 10) => {
+  // pageSize: items per page (handled by backend default)
+  // searchParams: object with optional search filters { jobNo, witnessName, caseName, caseNumber }
+  getJobsByType: async (type, startDate = null, endDate = null, page = null, pageSize = null, searchParams = {}) => {
     try {
       // Format dates to YYYY-MM-DD for API
       const formatDateForAPI = (date) => {
@@ -58,7 +59,20 @@ export const historyAPI = {
         params.append('end_date', formatDateForAPI(endDate));
       }
       params.append('page', page.toString());
-      params.append('page_size', pageSize.toString());
+      
+      // Add search parameters if provided
+      if (searchParams.jobNo && searchParams.jobNo.trim()) {
+        params.append('job_no', searchParams.jobNo.trim());
+      }
+      if (searchParams.witnessName && searchParams.witnessName.trim()) {
+        params.append('witness_name', searchParams.witnessName.trim());
+      }
+      if (searchParams.caseName && searchParams.caseName.trim()) {
+        params.append('case_name', searchParams.caseName.trim());
+      }
+      if (searchParams.caseNumber && searchParams.caseNumber.trim()) {
+        params.append('case_number', searchParams.caseNumber.trim());
+      }
 
       // Build URL with query parameters
       const queryString = params.toString();
@@ -92,7 +106,7 @@ export const historyAPI = {
           jobs: [],
           pagination: {
             page: backendPagination.page || page,
-            pageSize: backendPagination.page_size || pageSize,
+            pageSize: backendPagination.page_size || pageSize || 10,
             total: backendPagination.total || 0,
             totalPages: backendPagination.total_pages || 0,
             hasNext: backendPagination.has_next || false,
@@ -108,7 +122,7 @@ export const historyAPI = {
       const backendPagination = response.pagination || {};
       const pagination = {
         page: backendPagination.page || page,
-        pageSize: backendPagination.page_size || pageSize,
+        pageSize: backendPagination.page_size || pageSize || 10,
         total: backendPagination.total || jobs.length,
         totalPages: backendPagination.total_pages || (jobs.length > 0 ? 1 : 0),
         hasNext: backendPagination.has_next || false,
@@ -125,7 +139,7 @@ export const historyAPI = {
       return {
         jobs: [],
         pagination: {
-          page: 1,
+          page: page,
           pageSize: pageSize,
           total: 0,
           totalPages: 0,
