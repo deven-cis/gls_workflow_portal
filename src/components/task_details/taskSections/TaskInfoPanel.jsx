@@ -110,9 +110,9 @@ export default function TaskInfoPanel({
                         Loading...
                     </span>
                 ) : (
-                    <span className={`px-3 py-1 text-sm font-medium rounded-lg ${getStatusBadgeStyle(task.status)}`}>
-                        {getStatusDisplayText(task.status)}
-                    </span>
+                <span className={`px-3 py-1 text-sm font-medium rounded-lg ${getStatusBadgeStyle(task.status)}`}>
+                    {getStatusDisplayText(task.status)}
+                </span>
                 )}
                 <div className="relative" ref={menuRef}>
                     <button 

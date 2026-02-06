@@ -56,8 +56,11 @@ export const billingAPI = {
     },
 
     // Create billing information for a job
-    createBilling: async (jobNo, billingInfo) => {
+    createBilling: async (jobNo, billingInfo, cameraFile = null) => {
         const formData = buildBillingFormData(billingInfo, jobNo);
+        if (cameraFile) {
+            formData.append('camera_captured_file', cameraFile);
+        }
         return galloInstance(endpoints.billings.create(), {
             method: 'POST',
             body: formData,
@@ -65,7 +68,7 @@ export const billingAPI = {
     },
 
     // Update billing information - only sends changed fields
-    updateBilling: async (billingId, billingInfo, originalBillingInfo, jobNo = null) => {
+    updateBilling: async (billingId, billingInfo, originalBillingInfo, jobNo = null, cameraFile = null, shouldRemoveCameraFile = false) => {
         const formData = new FormData();
         
         if (jobNo) {
@@ -105,6 +108,14 @@ export const billingAPI = {
             billingInfo.documentsToRemove.forEach((docId) => {
                 formData.append('remove_documents', docId.toString());
             });
+        }
+
+        // Handle camera file
+        if (cameraFile) {
+            formData.append('camera_captured_file', cameraFile);
+        } else if (shouldRemoveCameraFile) {
+            const emptyCameraFile = new File([], '', { type: 'application/octet-stream' });
+            formData.append('camera_captured_file', emptyCameraFile);
         }
 
         return galloInstance(endpoints.billings.update(billingId), {

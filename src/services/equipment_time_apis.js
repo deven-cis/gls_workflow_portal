@@ -2,7 +2,7 @@ import { galloInstance } from './galloInstance.js';
 import { endpoints } from '@/constants/endpoints';
 
 // Helper function to build FormData for equipment time (shared between create and update)
-const buildEquipmentTimeFormData = (equipmentInfo, jobNo = null) => {
+const buildEquipmentTimeFormData = (equipmentInfo, jobNo = null, cameraFile = null) => {
     const formData = new FormData();
     
     if (jobNo) {
@@ -27,6 +27,12 @@ const buildEquipmentTimeFormData = (equipmentInfo, jobNo = null) => {
             formData.append('files', doc.file);
         }
     });
+
+    // Attach camera-captured image if provided
+    if (cameraFile) {
+        formData.append('camera_captured_file', cameraFile);
+    }
+
     console.log('formData for equipment time', formData);
     return formData;
 };
@@ -64,8 +70,8 @@ export const equipmentTimeAPI = {
 
     // Create equipment time information for a job
     // Backend endpoint: POST /equipment-time/create
-    createEquipmentTime: async (jobNo, equipmentInfo) => {
-        const formData = buildEquipmentTimeFormData(equipmentInfo, jobNo);
+    createEquipmentTime: async (jobNo, equipmentInfo, cameraFile = null) => {
+        const formData = buildEquipmentTimeFormData(equipmentInfo, jobNo, cameraFile);
         return galloInstance(endpoints.equipmentTime.create(), {
             method: 'POST',
             body: formData,
@@ -74,7 +80,7 @@ export const equipmentTimeAPI = {
 
     // Update equipment time information - only sends changed fields
     // Backend endpoint: PUT /equipment-time/update/{equipment_time_id}
-    updateEquipmentTime: async (equipmentTimeId, equipmentInfo, originalEquipmentInfo, jobNo = null) => {
+    updateEquipmentTime: async (equipmentTimeId, equipmentInfo, originalEquipmentInfo, jobNo = null, cameraFile = null, shouldRemoveCameraFile = false) => {
         const formData = new FormData();
         
         if (jobNo) {
@@ -114,6 +120,14 @@ export const equipmentTimeAPI = {
             equipmentInfo.documentsToRemove.forEach((docId) => {
                 formData.append('remove_documents', docId.toString());
             });
+        }
+
+        // Handle camera-captured image
+        if (cameraFile) {
+            formData.append('camera_captured_file', cameraFile);
+        } else if (shouldRemoveCameraFile) {
+            const emptyCameraFile = new File([], '', { type: 'application/octet-stream' });
+            formData.append('camera_captured_file', emptyCameraFile);
         }
 
         return galloInstance(endpoints.equipmentTime.update(equipmentTimeId), {

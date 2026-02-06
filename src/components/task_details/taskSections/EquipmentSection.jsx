@@ -3,6 +3,7 @@ import { Clock, Edit3, Trash2 } from 'lucide-react';
 import CheckboxOption from '@/components/task_details/task/CheckboxOption';
 import IconInput from '@/components/task_details/task/IconInput';
 import DocumentUpload from '@/components/task_details/task/DocumentUpload';
+import CameraCapture from '@/components/task_details/task/CameraCapture';
 import ConfirmModal from '@/components/common/ConfirmModal';
 
 export default function EquipmentSection({ 
@@ -10,7 +11,9 @@ export default function EquipmentSection({
     handleEquipmentCheckbox, 
     handleEquipmentInputChange, 
     handleEquipmentUpload, 
-    handleEquipmentDocumentRemove,
+    handleEquipmentDocumentRemove, 
+    handleEquipmentCameraCapture,
+    handleRemoveEquipmentCameraCapture,
     editingEquipment,
     handleEditEquipment,
     handleSaveEquipment,
@@ -31,7 +34,7 @@ export default function EquipmentSection({
 
     return (
         <div className="space-y-6">
-            <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className={`space-y-5 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${!editingEquipment ? 'opacity-80' : ''}`}>
                 <div className="flex items-start justify-between">
                     <div>
                         <p className="text-base font-semibold text-gray-900">Equipment & Time</p>
@@ -114,6 +117,14 @@ export default function EquipmentSection({
                 multiple={true}
                 twoColumnLayout={true}
                 disabled={!editingEquipment}
+            />
+
+            <CameraCapture
+                onCapture={handleEquipmentCameraCapture}
+                onRemove={handleRemoveEquipmentCameraCapture}
+                capturedImage={equipmentInfo.cameraCapture}
+                disabled={!editingEquipment}
+                modelName="Equipment Camera Image"
             />
 
             {editingEquipment && (

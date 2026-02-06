@@ -88,6 +88,45 @@ export const useAttorneyManagement = (toast) => {
                             }];
                         }
                         
+                        // Map camera capture if file exists
+                        let cameraCapture = null;
+                        if (attorney.camera_captured_file_name) {
+                            let cameraFileSize = 0;
+                            // If camera filePath exists, fetch file size from server
+                            if (attorney.camera_captured_file_path) {
+                                const { fetchDocumentFileSize } = await import('@/lib/utils');
+                                const fetchedSize = await fetchDocumentFileSize(attorney.camera_captured_file_path);
+                                if (fetchedSize) {
+                                    cameraFileSize = fetchedSize;
+                                }
+                            }
+                            // Convert entered_at to ISO string if it exists, otherwise use current date
+                            let cameraUploadedAtDate = new Date().toISOString();
+                            if (attorney.entered_at) {
+                                if (typeof attorney.entered_at === 'string') {
+                                    cameraUploadedAtDate = attorney.entered_at;
+                                } else if (attorney.entered_at instanceof Date) {
+                                    cameraUploadedAtDate = attorney.entered_at.toISOString();
+                                } else {
+                                    try {
+                                        cameraUploadedAtDate = new Date(attorney.entered_at).toISOString();
+                                    } catch (e) {
+                                        cameraUploadedAtDate = new Date().toISOString();
+                                    }
+                                }
+                            }
+                            
+                            cameraCapture = {
+                                id: `camera-${attorney.id}-${Date.now()}`,
+                                name: attorney.camera_captured_file_name,
+                                size: cameraFileSize,
+                                type: 'image/jpeg',
+                                uploadedAt: cameraUploadedAtDate,
+                                backendId: attorney.id,
+                                filePath: attorney.camera_captured_file_path
+                            };
+                        }
+                        
                         return {
                             id: `attorney-${attorney.id}`, // Use backend ID for consistency
                             backendId: attorney.id,
@@ -98,7 +137,8 @@ export const useAttorneyManagement = (toast) => {
                                 notes: attorney.notes || '',
                                 orderDetails: attorney.order_details || ''
                             },
-                            documents: documents
+                            documents: documents,
+                            cameraCapture: cameraCapture
                         };
                     }));
                     
@@ -159,6 +199,51 @@ export const useAttorneyManagement = (toast) => {
                     : s
             );
         });
+    }, []);
+
+    // Handle attorney camera capture
+    const handleAttorneyCameraCapture = useCallback((sectionId, file) => {
+        if (!file) return;
+        setAttorneySections((prev) => {
+            const section = prev.find(s => s.id === sectionId);
+            if (!section) return prev;
+
+            // Store File object locally - will be sent with update/create API call
+            const newCameraCapture = {
+                id: `camera-${sectionId}-${Date.now()}`,
+                name: file.name,
+                size: file.size,
+                type: file.type,
+                uploadedAt: new Date().toISOString(),
+                file: file // Store File object to send with create/update API call
+            };
+            return prev.map((s) =>
+                s.id === sectionId
+                    ? { 
+                        ...s, 
+                        cameraCapture: newCameraCapture,
+                        // Preserve backendId when capturing camera
+                        backendId: s.backendId
+                    }
+                    : s
+            );
+        });
+    }, []);
+
+    // Handle remove attorney camera capture
+    const handleRemoveAttorneyCameraCapture = useCallback((sectionId) => {
+        setAttorneySections((prev) =>
+            prev.map((s) =>
+                s.id === sectionId
+                    ? {
+                          ...s,
+                          cameraCapture: null,
+                          // Preserve backendId when removing camera capture
+                          backendId: s.backendId
+                      }
+                    : s
+            )
+        );
     }, []);
 
     // Handle remove attorney document
@@ -293,39 +378,47 @@ export const useAttorneyManagement = (toast) => {
         // - AND documents array is empty (user removed it)
         // - AND no new file uploaded
         // Then we need to explicitly send empty document field to remove it
+        // Note: This might also trigger if attorney never had a document, but backend handles it correctly
         const isExistingAttorney = !!section.backendId;
         const hasNewFile = !!documentFile;
         const documentsNowEmpty = section.documents.length === 0;
-        // If it's an existing attorney with no documents now and no new file, assume document was removed
         const shouldRemoveDocument = isExistingAttorney && documentsNowEmpty && !hasNewFile;
         
-        // CRITICAL: Check if backendId exists to determine if this is an update or create
-        // Use explicit check for backendId (not just truthy, but also not null/undefined)
-        const hasBackendId = section.backendId != null && section.backendId !== undefined;
+        // Get camera capture file if it exists (for both create and update)
+        const cameraFile = section.cameraCapture?.file || null;
+        
+        // Check if camera capture was removed:
+        // - If section has backendId (existing attorney)
+        // - AND cameraCapture is null (user removed it)
+        // - AND no new camera file uploaded
+        // Then we need to explicitly send empty camera field to remove it
+        // 
+        // IMPORTANT: After deletion, section.cameraCapture is null, so we can't check filePath/backendId
+        // Instead, we check if the section has a backendId (meaning it was loaded from backend)
+        // and if cameraCapture is null. If both are true and there's no new file, assume it was removed.
+        // The backend will handle it correctly - if the attorney never had a camera, sending empty won't cause issues.
+        const shouldRemoveCameraFile = isExistingAttorney && !section.cameraCapture && !cameraFile;
+        const hasBackendId = section.backendId != null;
         
         // Validate we have the data
         if (!sectionData || !attorneyData || !selectedJobId) {
             return;
         }
         
-        console.log('Save attorney - sectionId:', sectionId, 'backendId:', sectionData.backendId, 'hasBackendId:', hasBackendId);
-        
         // Mark this section as being saved
         savingRef.current.add(sectionId);
         
-        // Perform API call OUTSIDE of setState to prevent duplicate calls
+        // Perform API call
         if (hasBackendId) {
             // UPDATE existing attorney
-            console.log('Updating existing attorney with backendId:', sectionData.backendId);
-            attorneysAPI.updateAttorney(sectionData.backendId, attorneyData, documentFile, shouldRemoveDocument)
+            attorneysAPI.updateAttorney(sectionData.backendId, attorneyData, documentFile, shouldRemoveDocument, cameraFile, shouldRemoveCameraFile)
                 .then((response) => {
-                    console.log('Attorney update response:', response);
-                    // Backend returns: { status_code, message, success, result: { id, ... } }
                     const updatedAttorney = response?.result || response;
                     
-                    if (!updatedAttorney || !updatedAttorney.id) {
+                    if (!updatedAttorney?.id) {
                         console.error('Invalid update response:', response);
-                        toast.error('Failed to update attorney: Invalid response');
+                        toast.error('Failed to update attorney: Invalid response from server');
+                        savingRef.current.delete(sectionId);
                         return;
                     }
                     
@@ -340,8 +433,19 @@ export const useAttorneyManagement = (toast) => {
                         filePath: updatedAttorney.file_name_path
                     }] : []; // Empty array if no document
                     
-                    setAttorneySections((prevSections) =>
-                        prevSections.map((s) => {
+                    // Map camera capture from backend response - if camera_captured_file_name is null, cameraCapture is null
+                    const updatedCameraCapture = updatedAttorney?.camera_captured_file_name ? {
+                        id: `camera-${updatedAttorney.id}-${Date.now()}`,
+                        name: updatedAttorney.camera_captured_file_name,
+                        size: 0,
+                        type: 'image/jpeg',
+                        uploadedAt: new Date().toISOString(),
+                        backendId: updatedAttorney.id,
+                        filePath: updatedAttorney.camera_captured_file_path
+                    } : null; // Null if no camera file
+                    
+                    setAttorneySections((prevSections) => {
+                        const mapped = prevSections.map((s) => {
                             if (s.id === sectionId) {
                                 return {
                                     ...s,
@@ -352,18 +456,22 @@ export const useAttorneyManagement = (toast) => {
                                         notes: updatedAttorney.notes || s.fields.notes,
                                         orderDetails: updatedAttorney.order_details || s.fields.orderDetails,
                                     },
-                                    documents: updatedDocuments // Use backend response data - will be empty if document was removed
+                                    documents: updatedDocuments, // Use backend response data - will be empty if document was removed
+                                    cameraCapture: updatedCameraCapture // Use backend response data - will be null if camera was removed
                                 };
                             }
                             return s;
-                        })
-                    );
+                        });
+                        return mapped;
+                    });
                     toast.success('Attorney updated successfully');
                     setEditingAttorney(null);
                 })
                 .catch((err) => {
-                    console.error('Failed to update attorney:', err);
-                    toast.error(err?.message || 'Failed to update attorney');
+                    console.error('Error updating attorney:', err);
+                    const errorMessage = err?.message || 'Unknown error occurred';
+                    toast.error(`Failed to update attorney: ${errorMessage}`);
+                    savingRef.current.delete(sectionId);
                 })
                 .finally(() => {
                     // Remove from saving set after API call completes
@@ -371,29 +479,24 @@ export const useAttorneyManagement = (toast) => {
                 });
         } else {
             // CREATE new attorney
-            console.log('Creating new attorney (no backendId)');
-            attorneysAPI.createJobAttorney(selectedJobId, attorneyData, documentFile)
+            attorneysAPI.createJobAttorney(selectedJobId, attorneyData, documentFile, cameraFile)
                 .then((response) => {
-                    console.log('Attorney creation response:', response);
-                    
                     // Check if the response indicates failure
                     if (response?.success === false || response?.status_code >= 400) {
                         const errorMessage = response?.message || 'Failed to create attorney';
                         console.error('Attorney creation failed:', response);
                         toast.error(errorMessage);
+                        savingRef.current.delete(sectionId);
                         return;
                     }
                     
-                    // Backend returns: { status_code, message, success, result: { id, ... } }
                     const createdAttorney = response?.result || response;
-                    
-                    // Extract attorney ID from response
                     const attorneyId = createdAttorney?.id;
                     
                     if (!attorneyId) {
                         console.error('No attorney ID found in response:', response);
-                        const errorMessage = response?.message || 'Failed to create attorney: No ID in response';
-                        toast.error(errorMessage);
+                        toast.error('Failed to create attorney: Invalid response from server');
+                        savingRef.current.delete(sectionId);
                         return;
                     }
                     
@@ -410,6 +513,17 @@ export const useAttorneyManagement = (toast) => {
                         filePath: createdAttorney.file_name_path
                     }] : [];
                     
+                    // Map camera capture from backend response
+                    const createdCameraCapture = createdAttorney?.camera_captured_file_name ? {
+                        id: `camera-${createdAttorney.id}-${Date.now()}`,
+                        name: createdAttorney.camera_captured_file_name,
+                        size: 0,
+                        type: 'image/jpeg',
+                        uploadedAt: new Date().toISOString(),
+                        backendId: createdAttorney.id,
+                        filePath: createdAttorney.camera_captured_file_path
+                    } : null;
+                    
                     setAttorneySections((prevSections) =>
                         prevSections.map((s) => {
                             if (s.id === sectionId) {
@@ -422,7 +536,8 @@ export const useAttorneyManagement = (toast) => {
                                         notes: createdAttorney.notes || s.fields.notes,
                                         orderDetails: createdAttorney.order_details || s.fields.orderDetails,
                                     },
-                                    documents: createdDocuments
+                                    documents: createdDocuments,
+                                    cameraCapture: createdCameraCapture
                                 };
                             }
                             return s;
@@ -432,11 +547,11 @@ export const useAttorneyManagement = (toast) => {
                     setEditingAttorney(null);
                 })
                 .catch((err) => {
-                    console.error('Failed to create attorney:', err);
-                    toast.error(err?.message || 'Failed to create attorney');
+                    console.error('Error creating attorney:', err);
+                    const errorMessage = err?.message || 'Unknown error occurred';
+                    toast.error(`Failed to create attorney: ${errorMessage}`);
                 })
                 .finally(() => {
-                    // Remove from saving set after API call completes
                     savingRef.current.delete(sectionId);
                 });
         }
@@ -464,6 +579,8 @@ export const useAttorneyManagement = (toast) => {
         handleAttorneyFieldChange,
         handleAttorneyUpload,
         handleRemoveAttorneyDocument,
+        handleAttorneyCameraCapture,
+        handleRemoveAttorneyCameraCapture,
         handleSaveAttorney,
         handleCancelAttorney,
     };

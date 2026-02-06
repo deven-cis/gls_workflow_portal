@@ -9,7 +9,8 @@ export const createAttorneySection = (title) => ({
     notes: '',
     orderDetails: ''
   },
-  documents: []
+  documents: [],
+  cameraCapture: null
 });
 
 export const getInitials = (name = '') => {

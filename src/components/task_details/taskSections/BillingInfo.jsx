@@ -3,6 +3,7 @@ import { Edit3, Trash2 } from 'lucide-react';
 import ToggleOption from '@/components/task_details/task/ToggleOption';
 import IconInput from '@/components/task_details/task/IconInput';
 import DocumentUpload from '@/components/task_details/task/DocumentUpload';
+import CameraCapture from '@/components/task_details/task/CameraCapture';
 import ConfirmModal from '@/components/common/ConfirmModal';
 
 export default function BillingInfo({ 
@@ -11,6 +12,8 @@ export default function BillingInfo({
     handleBillingInputChange, 
     handleBillingUpload, 
     handleBillingDocumentRemove,
+    handleBillingCameraCapture,
+    handleRemoveBillingCameraCapture,
     editingBilling,
     handleEditBilling,
     handleSaveBilling,
@@ -36,7 +39,7 @@ export default function BillingInfo({
                 title="Are you Sure?"
                 message="You want to delete the billing information? A new empty form will be created."
             />
-            <div className="space-y-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+            <div className={`space-y-6 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm ${!editingBilling ? 'opacity-80' : ''}`}>
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="text-base font-semibold text-gray-900">Billing</p>
@@ -126,6 +129,14 @@ export default function BillingInfo({
                 disabled={!editingBilling}
                 multiple={true}
                 twoColumnLayout={true}
+            />
+
+            <CameraCapture
+                onCapture={handleBillingCameraCapture}
+                onRemove={handleRemoveBillingCameraCapture}
+                capturedImage={billingInfo.cameraCapture}
+                disabled={!editingBilling}
+                modelName="Billing Camera Image"
             />
 
             {editingBilling && (

@@ -8,7 +8,7 @@ export default function ToggleOption({ label, description, value, onChange, disa
       disabled={disabled}
       className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
         disabled 
-          ? 'cursor-not-allowed border-gray-200 bg-white' 
+          ? 'cursor-not-allowed border-gray-200 bg-white opacity-80' 
           : value 
             ? 'border-blue-200 bg-blue-50 hover:border-blue-300' 
             : 'border-gray-200 bg-white hover:border-gray-300'

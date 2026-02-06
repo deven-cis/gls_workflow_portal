@@ -30,7 +30,7 @@ export default function IconInput({ label, placeholder, value, onChange, type = 
           className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${
             prefix ? 'pl-8' : ''
           } ${IconComponent ? 'pr-10' : ''} ${
-            disabled ? 'bg-gray-50 cursor-not-allowed' : ''
+            disabled ? 'bg-gray-50 cursor-not-allowed opacity-80' : ''
           } ${type === 'time' ? '[&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-0 [&::-webkit-calendar-picker-indicator]:w-0' : ''}`}
         />
         {IconComponent && (

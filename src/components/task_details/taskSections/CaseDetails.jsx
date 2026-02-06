@@ -40,7 +40,7 @@ const CaseDetails = forwardRef(({
     };
 
     return (
-        <div className="space-y-4">
+        <div className={`space-y-4 ${!editingCase ? 'opacity-80' : ''}`}>
             <div className="flex items-center justify-end">
                 {!editingCase && (
                     <button

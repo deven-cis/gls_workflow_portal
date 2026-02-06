@@ -21,7 +21,8 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
         exhibitTech: false,
         parkingCost: '',
         timeAfterFive: '',
-        documents: []
+        documents: [],
+        cameraCapture: null
     });
     const [editingEquipment, setEditingEquipment] = useState(false);
     const [pendingEquipmentChanges, setPendingEquipmentChanges] = useState(null);
@@ -56,6 +57,10 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
                     exhibitTech: equipmentData.exhibit_tech ?? false,
                     parkingCost: equipmentData.parking_cost ? String(equipmentData.parking_cost) : '',
                     timeAfterFive: equipmentData.time_after ?? '',
+                    cameraCapture: equipmentData.camera_captured_file_path ? {
+                        filePath: equipmentData.camera_captured_file_path,
+                        fileName: equipmentData.camera_captured_file_name || 'Equipment Image'
+                    } : null,
                     documents: await Promise.all((equipmentData.documents || []).map(async (doc) => {
                         let fileSize = doc.size || 0;
                         // If size is 0 or missing and filePath exists, fetch it from server
@@ -88,7 +93,8 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
                     exhibitTech: false,
                     parkingCost: '',
                     timeAfterFive: '',
-                    documents: []
+                    documents: [],
+                    cameraCapture: null
                 };
                 setEquipmentInfo(emptyEquipment);
                 setEquipmentTimeId(null);
@@ -108,7 +114,8 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
                 exhibitTech: false,
                 parkingCost: '',
                 timeAfterFive: '',
-                documents: []
+                documents: [],
+                cameraCapture: null
             };
             setEquipmentInfo(emptyEquipment);
             setEquipmentTimeId(null);
@@ -162,6 +169,27 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
         }));
     }, [editingEquipment]);
 
+    // Handle equipment camera capture
+    const handleEquipmentCameraCapture = useCallback((file) => {
+        if (!editingEquipment) return;
+        setEquipmentInfo((prev) => ({
+            ...prev,
+            cameraCapture: {
+                file,
+                fileName: file.name || 'Equipment Image'
+            }
+        }));
+    }, [editingEquipment]);
+
+    // Handle remove equipment camera capture
+    const handleRemoveEquipmentCameraCapture = useCallback(() => {
+        if (!editingEquipment) return;
+        setEquipmentInfo((prev) => ({
+            ...prev,
+            cameraCapture: null
+        }));
+    }, [editingEquipment]);
+
     // Handle edit equipment
     const handleEditEquipment = useCallback(() => {
         // Prevent editing for upcoming tasks
@@ -172,6 +200,9 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
         // Store current state as pending changes for cancel
         setPendingEquipmentChanges({
             ...equipmentInfo,
+            cameraCapture: equipmentInfo.cameraCapture ? {
+                ...equipmentInfo.cameraCapture
+            } : null,
             documents: equipmentInfo.documents.map(doc => ({ ...doc }))
         });
     }, [isUpcomingTask, equipmentInfo]);
@@ -241,6 +272,10 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
             equipmentData.timeAfterFive = normalizedTime;
         }
 
+        // Extract camera file and determine if it should be removed
+        const cameraFile = equipmentInfo.cameraCapture?.file || null;
+        const shouldRemoveCameraFile = equipmentTimeId && !equipmentInfo.cameraCapture && !cameraFile;
+
         // Persist equipment time to backend
         try {
             const jobIdParam = searchParams.get('jobId');
@@ -253,11 +288,18 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
             let response;
             if (equipmentTimeId) {
                 // Update existing equipment time - only send changed fields
-                response = await equipmentTimeAPI.updateEquipmentTime(equipmentTimeId, equipmentData, pendingEquipmentChanges, jobNo);
+                response = await equipmentTimeAPI.updateEquipmentTime(
+                    equipmentTimeId,
+                    equipmentData,
+                    pendingEquipmentChanges,
+                    jobNo,
+                    cameraFile,
+                    shouldRemoveCameraFile
+                );
                 toast.success('Equipment time updated successfully');
             } else {
                 // Create new equipment time
-                response = await equipmentTimeAPI.createEquipmentTime(jobNo, equipmentData);
+                response = await equipmentTimeAPI.createEquipmentTime(jobNo, equipmentData, cameraFile);
                 // Store equipment time ID from response
                 if (response?.result?.id) {
                     setEquipmentTimeId(response.result.id);
@@ -266,77 +308,82 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
             }
 
             // Fetch updated equipment data to get documents with backend IDs
-            // Add a small delay to ensure backend has processed the documents
             try {
-                // Wait a bit for backend to process documents
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 500)); // Wait for backend processing
+                const updatedData = await equipmentTimeAPI.getJobEquipmentTime(jobNo);
                 
-                const updatedEquipmentData = await equipmentTimeAPI.getJobEquipmentTime(jobNo);
-                
-                if (updatedEquipmentData) {
-                    // Map backend response to frontend format with documents
-                    const mappedDocuments = await Promise.all((updatedEquipmentData.documents || []).map(async (doc) => {
-                        // Use doc.id as the primary id, fallback to generated id if missing
+                if (updatedData) {
+                    // Map documents from backend
+                    const mappedDocuments = await Promise.all((updatedData.documents || []).map(async (doc) => {
                         const docId = doc.id ? `doc-${doc.id}` : `doc-${Date.now()}-${Math.random()}`;
                         let fileSize = doc.size || 0;
-                        // If size is 0 or missing and filePath exists, fetch it from server
+                        
                         if ((!fileSize || fileSize === 0) && doc.file_path) {
-                            const { fetchDocumentFileSize } = await import('@/lib/utils');
-                            const fetchedSize = await fetchDocumentFileSize(doc.file_path);
-                            if (fetchedSize) {
-                                fileSize = fetchedSize;
+                            try {
+                                const { fetchDocumentFileSize } = await import('@/lib/utils');
+                                const fetchedSize = await fetchDocumentFileSize(doc.file_path);
+                                if (fetchedSize) fileSize = fetchedSize;
+                            } catch (err) {
+                                console.warn(`Failed to fetch file size for doc ${doc.id}:`, err);
                             }
                         }
+                        
                         return {
                             id: docId,
                             name: doc.file_name || doc.name || 'Unknown',
                             size: fileSize,
                             type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
                             uploadedAt: doc.entered_at || doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                            backendId: doc.id, // Store backend ID separately
+                            backendId: doc.id,
                             filePath: doc.file_path
                         };
                     }));
                     
                     setEquipmentInfo({
-                        laptopUsed: updatedEquipmentData.laptop_used ?? false,
-                        pipUsed: updatedEquipmentData.pip_used ?? false,
-                        exhibitTech: updatedEquipmentData.exhibit_tech ?? false,
-                        parkingCost: updatedEquipmentData.parking_cost ? String(updatedEquipmentData.parking_cost) : '',
-                        timeAfterFive: updatedEquipmentData.time_after ?? '',
+                        laptopUsed: updatedData.laptop_used ?? false,
+                        pipUsed: updatedData.pip_used ?? false,
+                        exhibitTech: updatedData.exhibit_tech ?? false,
+                        parkingCost: updatedData.parking_cost ? String(updatedData.parking_cost) : '',
+                        timeAfterFive: updatedData.time_after ?? '',
+                        cameraCapture: updatedData.camera_captured_file_path ? {
+                            filePath: updatedData.camera_captured_file_path,
+                            fileName: updatedData.camera_captured_file_name || 'Equipment Camera Image'
+                        } : null,
                         documents: mappedDocuments
                     });
-                    if (updatedEquipmentData.id) {
-                        setEquipmentTimeId(updatedEquipmentData.id);
-                    }
+                    
+                    if (updatedData.id) setEquipmentTimeId(updatedData.id);
                 } else {
-                    // Fallback: Update local state - remove file objects and documentsToRemove after successful save
-                    const cleanedEquipment = {
+                    // Fallback: Clean local state
+                    const cleaned = {
                         ...equipmentData,
+                        cameraCapture: equipmentData.cameraCapture?.filePath 
+                            ? { filePath: equipmentData.cameraCapture.filePath, fileName: equipmentData.cameraCapture.fileName }
+                            : equipmentData.cameraCapture?.file 
+                                ? { file: equipmentData.cameraCapture.file, fileName: equipmentData.cameraCapture.fileName }
+                                : null,
                         documents: equipmentData.documents
                             .filter(doc => !documentsToRemove.includes(doc.id))
-                            .map(doc => {
-                                const { file, ...docWithoutFile } = doc;
-                                return docWithoutFile;
-                            })
+                            .map(({ file, ...rest }) => rest)
                     };
-                    delete cleanedEquipment.documentsToRemove;
-                    setEquipmentInfo(cleanedEquipment);
+                    delete cleaned.documentsToRemove;
+                    setEquipmentInfo(cleaned);
                 }
             } catch (fetchErr) {
-                // If fetch fails, use fallback approach
-                console.warn('Failed to fetch updated equipment data after save, using local state:', fetchErr);
-                const cleanedEquipment = {
+                console.warn('Failed to fetch updated equipment data, using local state:', fetchErr);
+                const cleaned = {
                     ...equipmentData,
+                    cameraCapture: equipmentData.cameraCapture?.filePath 
+                        ? { filePath: equipmentData.cameraCapture.filePath, fileName: equipmentData.cameraCapture.fileName }
+                        : equipmentData.cameraCapture?.file 
+                            ? { file: equipmentData.cameraCapture.file, fileName: equipmentData.cameraCapture.fileName }
+                            : null,
                     documents: equipmentData.documents
                         .filter(doc => !documentsToRemove.includes(doc.id))
-                        .map(doc => {
-                            const { file, ...docWithoutFile } = doc;
-                            return docWithoutFile;
-                        })
+                        .map(({ file, ...rest }) => rest)
                 };
-                delete cleanedEquipment.documentsToRemove;
-                setEquipmentInfo(cleanedEquipment);
+                delete cleaned.documentsToRemove;
+                setEquipmentInfo(cleaned);
             }
 
             setEditingEquipment(false);
@@ -344,7 +391,8 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
             setEquipmentHasBeenSaved(true);
         } catch (err) {
             console.error('Failed to save equipment time:', err);
-            toast.error('Failed to save equipment time');
+            const errorMessage = err?.message || 'An unexpected error occurred';
+            toast.error(`Failed to save equipment time: ${errorMessage}`);
         }
     }, [equipmentInfo, pendingEquipmentChanges, equipmentTimeId, searchParams, params, toast]);
 
@@ -363,7 +411,8 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
                 exhibitTech: false,
                 parkingCost: '',
                 timeAfterFive: '',
-                documents: []
+                documents: [],
+                cameraCapture: null
             };
             setEquipmentInfo(emptyEquipment);
             setPendingEquipmentChanges(null);
@@ -404,7 +453,8 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
                 exhibitTech: false,
                 parkingCost: '',
                 timeAfterFive: '',
-                documents: []
+                documents: [],
+                cameraCapture: null
             };
             setEquipmentInfo(emptyEquipment);
             setEditingEquipment(true); // Show Save/Cancel buttons after delete
@@ -423,7 +473,8 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
             setEditingEquipment(true);
             setPendingEquipmentChanges({
                 ...equipmentInfo,
-                documents: equipmentInfo.documents.map(doc => ({ ...doc }))
+                documents: equipmentInfo.documents.map(doc => ({ ...doc })),
+                cameraCapture: equipmentInfo.cameraCapture ? { ...equipmentInfo.cameraCapture } : null
             });
         }
     }, [equipmentInfo, equipmentHasBeenSaved]);
@@ -441,6 +492,8 @@ export const useEquipmentManagement = (toast, isUpcomingTask = false, onCancelCa
         handleEquipmentInputChange,
         handleEquipmentUpload,
         handleEquipmentDocumentRemove,
+        handleEquipmentCameraCapture,
+        handleRemoveEquipmentCameraCapture,
         handleEditEquipment,
         handleSaveEquipment,
         handleCancelEquipment,

@@ -90,7 +90,17 @@ export default function DocumentUpload({
       });
 
       if (!isValidType) {
-        toast.error(`Invalid file type: ${file.name}. Please upload ${accept}`);
+        // Extract user-friendly file extensions from accept prop
+        const friendlyExtensions = acceptedTypes
+          .filter(type => type.startsWith('.'))
+          .map(ext => ext.toUpperCase().replace('.', ''))
+          .filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
+        
+        const friendlyMessage = friendlyExtensions.length > 0 
+          ? `Please upload ${friendlyExtensions.join(' or ')} files only`
+          : 'Invalid file type';
+        
+        toast.error(`${friendlyMessage}. File "${file.name}" is not supported.`);
         return false;
       }
     }
@@ -152,7 +162,7 @@ export default function DocumentUpload({
         isDragging && !disabled
           ? 'border-blue-500 bg-blue-50'
           : 'border-gray-200 bg-gray-50'
-      }`}
+      } ${disabled ? 'opacity-80' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -219,7 +229,12 @@ export default function DocumentUpload({
               fileDate = new Date().toISOString().split('T')[0];
             }
             return (
-              <div key={document.id} className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+              <div 
+                key={document.id} 
+                className={`flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm ${
+                  disabled ? 'opacity-80' : ''
+                }`}
+              >
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-50 text-sm font-semibold text-red-600">
                   {extension}
                 </div>

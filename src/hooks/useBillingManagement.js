@@ -21,7 +21,8 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
         notes: '',
         videographerHours: '',
         fileLengthHours: '',
-        documents: []
+        documents: [],
+        cameraCapture: null
     });
     const [editingBilling, setEditingBilling] = useState(false);
     const [pendingBillingChanges, setPendingBillingChanges] = useState(null);
@@ -56,6 +57,10 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
                     notes: billingData.billing_notes ?? '',
                     videographerHours: billingData.videographer_hours_present ?? '',
                     fileLengthHours: billingData.file_hours_length ?? '',
+                    cameraCapture: billingData.camera_captured_file_path ? {
+                        filePath: billingData.camera_captured_file_path,
+                        fileName: billingData.camera_captured_file_name || 'Billing Camera Image'
+                    } : null,
                     documents: await Promise.all((billingData.documents || []).map(async (doc) => {
                         let fileSize = doc.size || 0;
                         // If size is 0 or missing and filePath exists, fetch it from server
@@ -88,7 +93,8 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
                     notes: '',
                     videographerHours: '',
                     fileLengthHours: '',
-                    documents: []
+                    documents: [],
+                    cameraCapture: null
                 };
                 setBillingInfo(emptyBilling);
                 setBillingId(null);
@@ -152,6 +158,27 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
         }));
     }, [editingBilling]);
 
+    // Handle billing camera capture
+    const handleBillingCameraCapture = useCallback((file) => {
+        if (!editingBilling) return;
+        setBillingInfo((prev) => ({
+            ...prev,
+            cameraCapture: {
+                file,
+                fileName: file.name || 'Billing Camera Image'
+            }
+        }));
+    }, [editingBilling]);
+
+    // Handle remove billing camera capture
+    const handleRemoveBillingCameraCapture = useCallback(() => {
+        if (!editingBilling) return;
+        setBillingInfo((prev) => ({
+            ...prev,
+            cameraCapture: null
+        }));
+    }, [editingBilling]);
+
     // Handle edit billing
     const handleEditBilling = useCallback(() => {
         // Prevent editing for upcoming tasks
@@ -159,10 +186,11 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
             return;
         }
         setEditingBilling(true);
-        // Store current state as pending changes for cancel (deep copy documents array)
+        // Store current state as pending changes for cancel (deep copy documents array and cameraCapture)
         setPendingBillingChanges({
             ...billingInfo,
-            documents: billingInfo.documents.map(doc => ({ ...doc }))
+            documents: billingInfo.documents.map(doc => ({ ...doc })),
+            cameraCapture: billingInfo.cameraCapture ? { ...billingInfo.cameraCapture } : null
         });
     }, [isUpcomingTask, billingInfo]);
 
@@ -221,14 +249,18 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
                 return;
             }
 
+            // Extract camera file and determine if it should be removed
+            const cameraFile = normalisedBilling.cameraCapture?.file || null;
+            const shouldRemoveCameraFile = billingId && !normalisedBilling.cameraCapture && !cameraFile;
+
             let response;
             if (billingId) {
                 // Update existing billing - only send changed fields
-                response = await billingAPI.updateBilling(billingId, normalisedBilling, pendingBillingChanges, jobNo);
+                response = await billingAPI.updateBilling(billingId, normalisedBilling, pendingBillingChanges, jobNo, cameraFile, shouldRemoveCameraFile);
                 toast.success('Billing information updated successfully');
             } else {
                 // Create new billing
-                response = await billingAPI.createBilling(jobNo, normalisedBilling);
+                response = await billingAPI.createBilling(jobNo, normalisedBilling, cameraFile);
                 // Store billing ID from response
                 if (response?.result?.id) {
                     setBillingId(response.result.id);
@@ -238,68 +270,69 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
 
             // Fetch updated billing data to get documents with backend IDs
             try {
-                const updatedBillingData = await billingAPI.getJobBilling(jobNo);
+                const updatedData = await billingAPI.getJobBilling(jobNo);
                 
-                if (updatedBillingData) {
-                    // Map backend response to frontend format with documents
-                    setBillingInfo({
-                        cancelEnRoute: updatedBillingData.cancel_en_route ?? false,
-                        cancelSetup: updatedBillingData.cancel_setup ?? false,
-                        notes: updatedBillingData.billing_notes ?? '',
-                        videographerHours: updatedBillingData.videographer_hours_present ?? '',
-                        fileLengthHours: updatedBillingData.file_hours_length ?? '',
-                        documents: await Promise.all((updatedBillingData.documents || []).map(async (doc) => {
-                            let fileSize = doc.size || 0;
-                            // If size is 0 or missing and filePath exists, fetch it from server
-                            if ((!fileSize || fileSize === 0) && doc.file_path) {
+                if (updatedData) {
+                    // Map documents from backend
+                    const mappedDocuments = await Promise.all((updatedData.documents || []).map(async (doc) => {
+                        let fileSize = doc.size || 0;
+                        
+                        if ((!fileSize || fileSize === 0) && doc.file_path) {
+                            try {
                                 const { fetchDocumentFileSize } = await import('@/lib/utils');
                                 const fetchedSize = await fetchDocumentFileSize(doc.file_path);
-                                if (fetchedSize) {
-                                    fileSize = fetchedSize;
-                                }
+                                if (fetchedSize) fileSize = fetchedSize;
+                            } catch (err) {
+                                console.warn(`Failed to fetch file size for doc ${doc.id}:`, err);
                             }
-                            return {
-                                id: doc.id || `doc-${doc.id}-${Date.now()}`,
-                                name: doc.file_name || doc.name || 'Unknown',
-                                size: fileSize,
-                                type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
-                                uploadedAt: doc.entered_at || doc.created_at || doc.uploaded_at || new Date().toISOString(),
-                                backendId: doc.id,
-                                filePath: doc.file_path
-                            };
-                        }))
+                        }
+                        
+                        return {
+                            id: doc.id || `doc-${doc.id}-${Date.now()}`,
+                            name: doc.file_name || doc.name || 'Unknown',
+                            size: fileSize,
+                            type: doc.file_name?.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream',
+                            uploadedAt: doc.entered_at || doc.created_at || doc.uploaded_at || new Date().toISOString(),
+                            backendId: doc.id,
+                            filePath: doc.file_path
+                        };
+                    }));
+                    
+                    setBillingInfo({
+                        cancelEnRoute: updatedData.cancel_en_route ?? false,
+                        cancelSetup: updatedData.cancel_setup ?? false,
+                        notes: updatedData.billing_notes ?? '',
+                        videographerHours: updatedData.videographer_hours_present ?? '',
+                        fileLengthHours: updatedData.file_hours_length ?? '',
+                        cameraCapture: updatedData.camera_captured_file_path ? {
+                            filePath: updatedData.camera_captured_file_path,
+                            fileName: updatedData.camera_captured_file_name || 'Billing Camera Image'
+                        } : null,
+                        documents: mappedDocuments
                     });
-                    if (updatedBillingData.id) {
-                        setBillingId(updatedBillingData.id);
-                    }
+                    
+                    if (updatedData.id) setBillingId(updatedData.id);
                 } else {
-                    // Fallback: Update local state - remove file objects and documentsToRemove after successful save
-                    const cleanedBilling = {
+                    // Fallback: Clean local state
+                    const cleaned = {
                         ...normalisedBilling,
                         documents: normalisedBilling.documents
                             .filter(doc => !documentsToRemove.includes(doc.id))
-                            .map(doc => {
-                                const { file, ...docWithoutFile } = doc;
-                                return docWithoutFile;
-                            })
+                            .map(({ file, ...rest }) => rest)
                     };
-                    delete cleanedBilling.documentsToRemove;
-                    setBillingInfo(cleanedBilling);
+                    delete cleaned.documentsToRemove;
+                    setBillingInfo(cleaned);
                 }
             } catch (fetchErr) {
-                // If fetch fails, use fallback approach
-                console.warn('Failed to fetch updated billing data after save, using local state:', fetchErr);
-                const cleanedBilling = {
+                console.warn('Failed to fetch updated billing data, using local state:', fetchErr);
+                const cleaned = {
                     ...normalisedBilling,
                     documents: normalisedBilling.documents
                         .filter(doc => !documentsToRemove.includes(doc.id))
-                        .map(doc => {
-                            const { file, ...docWithoutFile } = doc;
-                            return docWithoutFile;
-                        })
+                        .map(({ file, ...rest }) => rest)
                 };
-                delete cleanedBilling.documentsToRemove;
-                setBillingInfo(cleanedBilling);
+                delete cleaned.documentsToRemove;
+                setBillingInfo(cleaned);
             }
 
             setEditingBilling(false);
@@ -307,7 +340,8 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
             setBillingHasBeenSaved(true);
         } catch (err) {
             console.error('Failed to save billing information:', err);
-            toast.error('Failed to save billing information');
+            const errorMessage = err?.message || 'An unexpected error occurred';
+            toast.error(`Failed to save billing information: ${errorMessage}`);
         }
     }, [billingInfo, pendingBillingChanges, billingId, searchParams, params, toast]);
 
@@ -315,7 +349,12 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
     const handleCancelBilling = useCallback(() => {
         if (billingId && pendingBillingChanges) {
             // For existing billing, restore original values and exit edit mode
-            setBillingInfo(pendingBillingChanges);
+            // Deep copy cameraCapture if it exists
+            const restoredBilling = {
+                ...pendingBillingChanges,
+                cameraCapture: pendingBillingChanges.cameraCapture ? { ...pendingBillingChanges.cameraCapture } : null
+            };
+            setBillingInfo(restoredBilling);
             setEditingBilling(false);
             setPendingBillingChanges(null);
         } else {
@@ -326,7 +365,8 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
                 notes: '',
                 videographerHours: '',
                 fileLengthHours: '',
-                documents: []
+                documents: [],
+                cameraCapture: null
             };
             setBillingInfo(emptyBilling);
             setPendingBillingChanges(null);
@@ -394,6 +434,8 @@ export const useBillingManagement = (toast, isUpcomingTask = false, onCancelCall
         handleBillingInputChange,
         handleBillingUpload,
         handleBillingDocumentRemove,
+        handleBillingCameraCapture,
+        handleRemoveBillingCameraCapture,
         handleEditBilling,
         handleSaveBilling,
         handleCancelBilling,

@@ -9,7 +9,7 @@ export default function CheckboxOption({ label, description, checked, onChange, 
       disabled={disabled}
       className={`flex h-full items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
         checked ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-white hover:border-gray-300'
-      } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+      } ${disabled ? 'cursor-not-allowed opacity-80' : ''}`}
     >
       <span
         className={`flex h-5 w-5 items-center justify-center rounded border ${

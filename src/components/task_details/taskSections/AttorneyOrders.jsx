@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import DocumentUpload from '@/components/task_details/task/DocumentUpload';
+import CameraCapture from '@/components/task_details/task/CameraCapture';
 import { Trash2, Edit3, ChevronDown, ChevronUp } from 'lucide-react';
 import { useToast } from '@/contexts/ToastContext';
 import ConfirmModal from '@/components/common/ConfirmModal';
@@ -11,6 +12,8 @@ export default function AttorneyOrders({
     handleAttorneyFieldChange,
     handleAttorneyUpload,
     handleRemoveAttorneyDocument,
+    handleAttorneyCameraCapture,
+    handleRemoveAttorneyCameraCapture,
     handleSaveAttorney,
     handleCancelAttorney,
     expandedAttorney,
@@ -33,7 +36,8 @@ export default function AttorneyOrders({
                 ...pendingChanges,
                 [sectionId]: {
                     fields: { ...section.fields },
-                    documents: [...section.documents]
+                    documents: [...section.documents],
+                    cameraCapture: section.cameraCapture ? { ...section.cameraCapture } : null
                 }
             });
         }
@@ -68,27 +72,57 @@ export default function AttorneyOrders({
         }
 
         // All fields are filled, proceed with save
-        if (handleSaveAttorney) {
-            handleSaveAttorney(sectionId);
-        }
-        setEditingAttorney(null);
+        // Clear pending changes before save (handleSaveAttorney will handle setEditingAttorney)
         setPendingChanges((prev) => {
             const next = { ...prev };
             delete next[sectionId];
             return next;
         });
+        
+        if (handleSaveAttorney) {
+            handleSaveAttorney(sectionId);
+        }
+        // Note: setEditingAttorney is handled by handleSaveAttorney after API call completes
         // toast.success('Attorney information saved successfully');
     };
 
     const handleCancel = (sectionId, e) => {
         e.stopPropagation();
         const pending = pendingChanges[sectionId];
-        if (pending) {
+        const currentSection = attorneySections.find(s => s.id === sectionId);
+        
+        if (pending && currentSection) {
             // Restore original field values
             Object.keys(pending.fields).forEach(field => {
                 handleAttorneyFieldChange(sectionId, field, pending.fields[field]);
             });
+            
+            // Handle documents: Remove any NEW documents that were added during edit
+            // Note: We can't restore documents that were removed (limitation - would need File object)
+            const pendingDocIds = new Set(pending.documents.map(d => d.id || d.filePath || d.name));
+            currentSection.documents.forEach(doc => {
+                // If this document wasn't in the original state, it's new - remove it
+                const docKey = doc.id || doc.filePath || doc.name;
+                if (!pendingDocIds.has(docKey)) {
+                    // This is a new document added during edit - remove it
+                    if (handleRemoveAttorneyDocument && doc.id) {
+                        handleRemoveAttorneyDocument(sectionId, doc.id);
+                    }
+                }
+            });
+            
+            // Handle camera capture: Remove if it was added during edit
+            // Note: We can't restore camera that was removed (limitation - would need File object)
+            if (!pending.cameraCapture && currentSection.cameraCapture) {
+                // Original had no camera, but current has one - it was added during edit, remove it
+                if (handleRemoveAttorneyCameraCapture) {
+                    handleRemoveAttorneyCameraCapture(sectionId);
+                }
+            }
+            // If pending had camera but current doesn't, it was removed - we can't restore it
+            // (limitation: would need File object from backend, which we don't have)
         }
+        
         if (handleCancelAttorney) {
             handleCancelAttorney(sectionId);
         }
@@ -240,7 +274,7 @@ export default function AttorneyOrders({
                             </div>
 
                             {isExpanded && (
-                                <div className={`border-t border-gray-200 p-4 space-y-5 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}>
+                                <div className={`border-t border-gray-200 p-4 space-y-5 ${isEditing ? 'bg-white' : 'bg-gray-50'} ${!isEditing ? 'opacity-80' : ''}`}>
                                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                         <div>
                                             <label className="mb-2 block text-sm font-medium text-gray-700">Attorney Name <span className="text-red-600">*</span></label>
@@ -249,7 +283,7 @@ export default function AttorneyOrders({
                                                 value={section.fields.attorneyName}
                                                 onChange={(e) => handleAttorneyFieldChange(section.id, 'attorneyName', e.target.value)}
                                                 placeholder="Enter attorney name"
-                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
+                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50 cursor-not-allowed'}`}
                                                 disabled={!isEditing}
                                             />
                                         </div>
@@ -260,7 +294,7 @@ export default function AttorneyOrders({
                                                 value={section.fields.firmName}
                                                 onChange={(e) => handleAttorneyFieldChange(section.id, 'firmName', e.target.value)}
                                                 placeholder="Enter firm name"
-                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
+                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50 cursor-not-allowed'}`}
                                                 disabled={!isEditing}
                                             />
                                         </div>
@@ -271,7 +305,7 @@ export default function AttorneyOrders({
                                                 value={section.fields.notes}
                                                 onChange={(e) => handleAttorneyFieldChange(section.id, 'notes', e.target.value)}
                                                 placeholder="Enter any notes"
-                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
+                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50 cursor-not-allowed'}`}
                                                 disabled={!isEditing}
                                             />
                                         </div>
@@ -282,12 +316,13 @@ export default function AttorneyOrders({
                                                 value={section.fields.orderDetails}
                                                 onChange={(e) => handleAttorneyFieldChange(section.id, 'orderDetails', e.target.value)}
                                                 placeholder="Enter order details"
-                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50'}`}
+                                                className={`w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-200 ${isEditing ? 'bg-white' : 'bg-gray-50 cursor-not-allowed'}`}
                                                 disabled={!isEditing}
                                             />
                                         </div>
                                     </div>
 
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     <DocumentUpload
                                         title="Upload your business card or drag & drop"
                                         description="DOCX or PDF formats, up to 5MB."
@@ -297,6 +332,15 @@ export default function AttorneyOrders({
                                         onRemoveDocument={(documentId) => handleRemoveAttorneyDocument(section.id, documentId)}
                                         disabled={!isEditing}
                                     />
+
+                                        <CameraCapture
+                                            onCapture={(file) => handleAttorneyCameraCapture(section.id, file)}
+                                            onRemove={() => handleRemoveAttorneyCameraCapture(section.id)}
+                                            capturedImage={section.cameraCapture}
+                                            disabled={!isEditing}
+                                            modelName={section.fields.attorneyName || 'Attorney Card Image'}
+                                        />
+                                    </div>
 
                                     {isEditing && (
                                         <div className="flex justify-end gap-3 pt-2">

@@ -86,6 +86,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         handleAttorneyFieldChange,
         handleAttorneyUpload,
         handleRemoveAttorneyDocument,
+        handleAttorneyCameraCapture,
+        handleRemoveAttorneyCameraCapture,
         handleSaveAttorney,
         handleCancelAttorney
     } = useAttorneyManagement(toast);
@@ -135,6 +137,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         handleBillingInputChange,
         handleBillingUpload,
         handleBillingDocumentRemove,
+        handleBillingCameraCapture,
+        handleRemoveBillingCameraCapture,
         handleEditBilling,
         handleSaveBilling,
         handleCancelBilling,
@@ -156,6 +160,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         handleEquipmentInputChange,
         handleEquipmentUpload,
         handleEquipmentDocumentRemove,
+        handleEquipmentCameraCapture,
+        handleRemoveEquipmentCameraCapture,
         handleEditEquipment,
         handleSaveEquipment,
         handleCancelEquipment,
@@ -508,7 +514,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                     onClick={() => !isUpcomingTask && toggleStep(step.number)}
                                     className={`p-4 flex items-center justify-between transition-colors ${
                                         isUpcomingTask 
-                                            ? 'cursor-not-allowed opacity-60' 
+                                            ? 'cursor-not-allowed opacity-80' 
                                             : 'cursor-pointer hover:bg-gray-50'
                                     }`}
                                 >
@@ -587,6 +593,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleAttorneyFieldChange={handleAttorneyFieldChange}
                                                 handleAttorneyUpload={handleAttorneyUpload}
                                                 handleRemoveAttorneyDocument={handleRemoveAttorneyDocument}
+                                                handleAttorneyCameraCapture={handleAttorneyCameraCapture}
+                                                handleRemoveAttorneyCameraCapture={handleRemoveAttorneyCameraCapture}
                                                 handleSaveAttorney={handleSaveAttorney}
                                                 handleCancelAttorney={handleCancelAttorney}
                                                 expandedAttorney={expandedAttorney}
@@ -602,6 +610,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleBillingInputChange={handleBillingInputChange}
                                                 handleBillingUpload={handleBillingUpload}
                                                 handleBillingDocumentRemove={handleBillingDocumentRemove}
+                                                handleBillingCameraCapture={handleBillingCameraCapture}
+                                                handleRemoveBillingCameraCapture={handleRemoveBillingCameraCapture}
                                                 editingBilling={editingBilling}
                                                 handleEditBilling={handleEditBilling}
                                                 handleSaveBilling={handleSaveBilling}
@@ -617,6 +627,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleEquipmentInputChange={handleEquipmentInputChange}
                                                 handleEquipmentUpload={handleEquipmentUpload}
                                                 handleEquipmentDocumentRemove={handleEquipmentDocumentRemove}
+                                                handleEquipmentCameraCapture={handleEquipmentCameraCapture}
+                                                handleRemoveEquipmentCameraCapture={handleRemoveEquipmentCameraCapture}
                                                 editingEquipment={editingEquipment}
                                                 handleEditEquipment={handleEditEquipment}
                                                 handleSaveEquipment={handleSaveEquipment}

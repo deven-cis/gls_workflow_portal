@@ -11,9 +11,9 @@ export const attorneysAPI = {
     },
 
     // Create attorney for a job
-    // Backend expects FormData with: job_no, attorney_name, firm_name, notes, order_details, document (optional file)
-    createJobAttorney: async (jobId, attorneyData, file = null) => {
-        console.log('Creating attorney with data:', { jobId, ...attorneyData, hasFile: !!file });
+    // Backend expects FormData with: job_no, attorney_name, firm_name, notes, order_details, document (optional file), camera_captured_file (optional file)
+    createJobAttorney: async (jobId, attorneyData, file = null, cameraFile = null) => {
+        console.log('Creating attorney with data:', { jobId, ...attorneyData, hasFile: !!file, hasCameraFile: !!cameraFile });
         
         // Use FormData to match backend API signature (Form fields + optional File)
         const formData = new FormData();
@@ -28,6 +28,11 @@ export const attorneysAPI = {
             formData.append('document', file);
         }
         
+        // Append camera captured file if provided (backend expects 'camera_captured_file' as parameter name)
+        if (cameraFile) {
+            formData.append('camera_captured_file', cameraFile);
+        }
+        
         // galloInstance automatically handles FormData (doesn't set Content-Type)
         const response = await galloInstance(endpoints.attorneys.create(), {
             method: 'POST',
@@ -38,10 +43,10 @@ export const attorneysAPI = {
     },
 
     // Update attorney (with optional file upload/removal)
-    // Backend expects FormData with: attorney_name, firm_name, notes, order_details, document (optional file)
+    // Backend expects FormData with: attorney_name, firm_name, notes, order_details, document (optional file), camera_captured_file (optional file)
     // If document is explicitly removed (empty), send empty field to remove it
-    updateAttorney: async (attorneyId, attorneyData, file = null, shouldRemoveDocument = false) => {
-        console.log('Updating attorney with data:', { attorneyId, ...attorneyData, hasFile: !!file, shouldRemoveDocument });
+    updateAttorney: async (attorneyId, attorneyData, file = null, shouldRemoveDocument = false, cameraFile = null, shouldRemoveCameraFile = false) => {
+        console.log('Updating attorney with data:', { attorneyId, ...attorneyData, hasFile: !!file, shouldRemoveDocument, hasCameraFile: !!cameraFile, shouldRemoveCameraFile });
         
         // Use FormData to match backend API signature (Form fields + optional File)
         const formData = new FormData();
@@ -63,6 +68,20 @@ export const attorneysAPI = {
             formData.append('document', emptyFile);
         }
         // If neither condition, document field is not sent - backend keeps existing document
+        
+        // Handle camera_captured_file field:
+        // - If cameraFile provided → send file (upload/replace)
+        // - If shouldRemoveCameraFile is true → send empty file with empty filename (remove camera file)
+        // - If neither → don't send field (keep existing camera file unchanged)
+        if (cameraFile) {
+            formData.append('camera_captured_file', cameraFile);
+        } else if (shouldRemoveCameraFile) {
+            // Send empty file to explicitly remove camera file
+            // Backend checks: if 'camera_captured_file' in form_data and not camera_captured_file.filename → remove
+            const emptyCameraFile = new File([], '', { type: 'application/octet-stream' });
+            formData.append('camera_captured_file', emptyCameraFile);
+        }
+        // If neither condition, camera_captured_file field is not sent - backend keeps existing camera file
         
         // galloInstance automatically handles FormData (doesn't set Content-Type)
         const response = await galloInstance(endpoints.attorneys.update(attorneyId), {
