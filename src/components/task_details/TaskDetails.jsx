@@ -89,7 +89,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         handleAttorneyCameraCapture,
         handleRemoveAttorneyCameraCapture,
         handleSaveAttorney,
-        handleCancelAttorney
+        handleCancelAttorney,
+        handleRestoreAttorneySection
     } = useAttorneyManagement(toast);
     const [jobData, setJobData] = useState(null);
     const [task, setTask] = useState(null);
@@ -597,6 +598,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleRemoveAttorneyCameraCapture={handleRemoveAttorneyCameraCapture}
                                                 handleSaveAttorney={handleSaveAttorney}
                                                 handleCancelAttorney={handleCancelAttorney}
+                                                handleRestoreAttorneySection={handleRestoreAttorneySection}
                                                 expandedAttorney={expandedAttorney}
                                                 setExpandedAttorney={setExpandedAttorney}
                                                 editingAttorney={editingAttorney}

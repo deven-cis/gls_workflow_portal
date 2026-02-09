@@ -557,6 +557,25 @@ export const useAttorneyManagement = (toast) => {
         }
     }, [selectedJobId, toast]);
 
+    // Handle restore attorney section (for cancel operation)
+    const handleRestoreAttorneySection = useCallback((sectionId, originalState) => {
+        if (!originalState) return;
+        
+        setAttorneySections((prev) =>
+            prev.map((s) =>
+                s.id === sectionId
+                    ? {
+                          ...s,
+                          documents: originalState.documents ? [...originalState.documents] : [],
+                          cameraCapture: originalState.cameraCapture ? { ...originalState.cameraCapture } : null,
+                          // Preserve backendId
+                          backendId: s.backendId
+                      }
+                    : s
+            )
+        );
+    }, []);
+
     // Handle cancel attorney
     const handleCancelAttorney = useCallback((sectionId) => {
         // Cancel editing - just close edit mode
@@ -583,6 +602,7 @@ export const useAttorneyManagement = (toast) => {
         handleRemoveAttorneyCameraCapture,
         handleSaveAttorney,
         handleCancelAttorney,
+        handleRestoreAttorneySection,
     };
 };
 

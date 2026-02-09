@@ -16,6 +16,7 @@ export default function AttorneyOrders({
     handleRemoveAttorneyCameraCapture,
     handleSaveAttorney,
     handleCancelAttorney,
+    handleRestoreAttorneySection,
     expandedAttorney,
     setExpandedAttorney,
     editingAttorney,
@@ -97,30 +98,35 @@ export default function AttorneyOrders({
                 handleAttorneyFieldChange(sectionId, field, pending.fields[field]);
             });
             
-            // Handle documents: Remove any NEW documents that were added during edit
-            // Note: We can't restore documents that were removed (limitation - would need File object)
-            const pendingDocIds = new Set(pending.documents.map(d => d.id || d.filePath || d.name));
-            currentSection.documents.forEach(doc => {
-                // If this document wasn't in the original state, it's new - remove it
-                const docKey = doc.id || doc.filePath || doc.name;
-                if (!pendingDocIds.has(docKey)) {
-                    // This is a new document added during edit - remove it
-                    if (handleRemoveAttorneyDocument && doc.id) {
-                        handleRemoveAttorneyDocument(sectionId, doc.id);
+            // Restore documents and camera capture from pendingChanges
+            // This will restore deleted files since pendingChanges has the original state
+            if (handleRestoreAttorneySection) {
+                handleRestoreAttorneySection(sectionId, {
+                    documents: pending.documents,
+                    cameraCapture: pending.cameraCapture
+                });
+            } else {
+                // Fallback: Handle documents: Remove any NEW documents that were added during edit
+                const pendingDocIds = new Set(pending.documents.map(d => d.id || d.filePath || d.name));
+                currentSection.documents.forEach(doc => {
+                    // If this document wasn't in the original state, it's new - remove it
+                    const docKey = doc.id || doc.filePath || doc.name;
+                    if (!pendingDocIds.has(docKey)) {
+                        // This is a new document added during edit - remove it
+                        if (handleRemoveAttorneyDocument && doc.id) {
+                            handleRemoveAttorneyDocument(sectionId, doc.id);
+                        }
+                    }
+                });
+                
+                // Handle camera capture: Remove if it was added during edit
+                if (!pending.cameraCapture && currentSection.cameraCapture) {
+                    // Original had no camera, but current has one - it was added during edit, remove it
+                    if (handleRemoveAttorneyCameraCapture) {
+                        handleRemoveAttorneyCameraCapture(sectionId);
                     }
                 }
-            });
-            
-            // Handle camera capture: Remove if it was added during edit
-            // Note: We can't restore camera that was removed (limitation - would need File object)
-            if (!pending.cameraCapture && currentSection.cameraCapture) {
-                // Original had no camera, but current has one - it was added during edit, remove it
-                if (handleRemoveAttorneyCameraCapture) {
-                    handleRemoveAttorneyCameraCapture(sectionId);
-                }
             }
-            // If pending had camera but current doesn't, it was removed - we can't restore it
-            // (limitation: would need File object from backend, which we don't have)
         }
         
         if (handleCancelAttorney) {
