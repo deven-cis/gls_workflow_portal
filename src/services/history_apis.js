@@ -14,7 +14,7 @@ const mapJobToHistory = (job) => {
     jobId: `Job${job.job_no}`,
     date: dateStr,
     time: timeStr,
-    title: job.case?.case_short_name || `Job #${job.job_no}`,
+    title: job.case?.case_short_name ? (job.case?.case_type ? `${job.case.case_type}: ${job.case.case_short_name}` : job.case.case_short_name) : `Job #${job.job_no}`,
     location: job.zoom_meeting_id ? 'Virtual - Zoom' : `${job.job_loc_name || ''}, ${job.job_loc_city || ''}`,
     isVirtual: !!job.zoom_meeting_id,
     status: job.computed_status || 'Completed',

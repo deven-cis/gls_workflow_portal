@@ -125,6 +125,7 @@ function EventCard({ event, formatTime, getTimeRemaining, variant = 'default', o
   const isPending = event.status === 'pending';
   const timeRemaining = event.deadline ? getTimeRemaining(event.deadline) : null;
   const isCompact = variant === 'compact';
+  const rsrcType = event.rsrc_type || event.resourceType || null; // Handle different naming conventions
   
   // Build navigation URL based on event status / IDs
   const linkUrl = buildEventLink(event);
@@ -172,6 +173,15 @@ function EventCard({ event, formatTime, getTimeRemaining, variant = 'default', o
             event.title.length > 32 ? `${event.title.substring(0, 32)}...` : event.title
           )}
         </div>
+        
+        {/* Resource Type Badge */}
+        {rsrcType && (
+          <div className="mb-1">
+            <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 text-[9px] font-semibold rounded-full">
+              {rsrcType}
+            </span>
+          </div>
+        )}
         
         {/* Videos Pending Badge */}
         {event.witnessVideosStatus && (
@@ -983,6 +993,14 @@ function EventDetailsPopover({ isOpen, onClose, date, events, formatTime, getTim
                       <span>Case: {event.caseNo}</span>
                     </div>
                   )}
+                  
+                  {(event.rsrc_type || event.resourceType) && (
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="w-3 h-3 text-gray-400" />
+                      <span className="capitalize">{event.rsrc_type || event.resourceType}</span>
+                    </div>
+                  )}
+                  
                   {/* Only show "Videos Pending" if there are actually videos pending (witnessVideosStatus exists and has data) */}
                   {event.witnessVideosStatus && 
                    typeof event.witnessVideosStatus === 'object' && 

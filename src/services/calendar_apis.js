@@ -130,6 +130,7 @@ const mapCalendarEvent = (apiEvent) => {
     caseNo: apiEvent.case_no || apiEvent.caseNo,
     jobNo: apiEvent.id,
     computedStatus: computedStatus,
+    rsrc_type : apiEvent.rsrc_type
   };
   return mappedEvent;
 };

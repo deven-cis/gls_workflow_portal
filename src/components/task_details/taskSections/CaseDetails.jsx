@@ -73,7 +73,7 @@ const CaseDetails = forwardRef(({
                         Case Number <span className="text-red-600">*</span>
                     </label>
                     <input
-                        type="number"
+                        type="text"
                         value={localFormData.caseNumber}
                         onChange={(e) => handleInputChange('caseNumber', e.target.value)}
                         disabled={!editingCase}
