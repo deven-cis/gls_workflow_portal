@@ -1,7 +1,7 @@
 // Enhanced auth helpers with refresh token support
 export const AUTH_TOKEN_KEY = 'access_token';
 export const REFRESH_TOKEN_KEY = 'refresh_token';
-export const USER_KEY = 'user';
+export const USER_KEY = 'resource';
 
 export function getToken() {
     if (typeof window === 'undefined') return null;
@@ -43,10 +43,10 @@ export function getUser() {
     }
 }
 
-export function setUser(user) {
+export function setUser(resource) {
     if (typeof window === 'undefined') return;
-    if (user) {
-        window.localStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (resource) {
+        window.localStorage.setItem(USER_KEY, JSON.stringify(resource));
     } else {
         window.localStorage.removeItem(USER_KEY);
     }

@@ -1,5 +1,8 @@
 import { DateTime } from 'luxon';
 
+// Backend/source timezone (DST-aware Eastern Time)
+export const BACKEND_TIMEZONE = 'America/New_York';
+
 // Cache for timezone to avoid repeated detection
 let cachedTimezone = null;
 
@@ -30,7 +33,7 @@ const isValidTimezone = (timezone) => {
 /**
  * Get client-side timezone from browser
  * Uses Intl.DateTimeFormat API to detect browser timezone
- * @returns {string} IANA timezone string (e.g., "America/New_York") or "EST" as fallback
+ * @returns {string} IANA timezone string (e.g., "Asia/Kolkata") or BACKEND_TIMEZONE as fallback
  */
 export const getClientTimezone = () => {
     // Return cached value if available
@@ -40,7 +43,7 @@ export const getClientTimezone = () => {
 
     // Only work on client-side
     if (!isClient()) {
-        cachedTimezone = 'EST';
+        cachedTimezone = BACKEND_TIMEZONE;
         return cachedTimezone;
     }
 
@@ -55,8 +58,8 @@ export const getClientTimezone = () => {
         console.warn('Error detecting browser timezone:', error);
     }
 
-    // Fallback to EST
-    cachedTimezone = 'EST';
+    // Fallback to backend timezone
+    cachedTimezone = BACKEND_TIMEZONE;
     return cachedTimezone;
 };
 
@@ -79,13 +82,18 @@ export const clearTimezoneCache = () => {
  * Convert a date to a specific timezone
  * @param {Date|string|DateTime} date - Date to convert
  * @param {string} targetTimezone - Target IANA timezone string
- * @param {string} sourceTimezone - Source timezone (defaults to EST)
+ * @param {string} sourceTimezone - Source timezone (defaults to BACKEND_TIMEZONE)
  * @returns {DateTime|null} Luxon DateTime object in target timezone, or null if invalid
  */
-export const convertToTimezone = (date, targetTimezone, sourceTimezone = 'EST') => {
+export const convertToTimezone = (date, targetTimezone, sourceTimezone = BACKEND_TIMEZONE) => {
     try {
         if (!isValidTimezone(targetTimezone)) {
             console.warn(`Invalid target timezone: ${targetTimezone}`);
+            return null;
+        }
+
+        if (!isValidTimezone(sourceTimezone)) {
+            console.warn(`Invalid source timezone: ${sourceTimezone}`);
             return null;
         }
 

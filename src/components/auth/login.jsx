@@ -44,8 +44,8 @@ export default function LoginPage() {
                 }
 
                 // Store user details for Settings/Header usage
-                if (response.user) {
-                    setUser(response.user);
+                if (response.resource) {
+                    setUser(response.resource);
                 }
                 
                 // Redirect to dashboard on successful login

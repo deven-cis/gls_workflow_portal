@@ -47,11 +47,11 @@ export const userSettingsAPI = {
     return response?.result ?? response;
   },
 
-  changePassword: async (userId, oldPassword, newPassword) => {
+  changePassword: async (rsrcNo, oldPassword, newPassword) => {
     const response = await galloInstance(endpoints.users.changePassword(), {
       method: 'POST',
       body: JSON.stringify({
-        user_id: userId,
+        rsrc_no: rsrcNo,
         old_password: oldPassword,
         new_password: newPassword,
       }),

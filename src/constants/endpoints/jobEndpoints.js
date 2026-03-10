@@ -19,7 +19,7 @@ export const jobEndpoints = {
   sessionEnd: (jobNo) => `/jobs/${jobNo}/session/end`,
   sessionStartTime: (jobNo) => `/jobs/get/${jobNo}/session_start_time/`,
   
-  reassign: () => '/jobs/reassign',
+  reassign: () => '/jobassignment/reassign',
 };
 
 

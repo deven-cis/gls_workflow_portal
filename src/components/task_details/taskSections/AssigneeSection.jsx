@@ -7,7 +7,7 @@ import { assigneeAPI } from '@/services/assignee_apis';
 import { useEffectiveJobNo } from '@/hooks/useJobContext';
 import ReassignmentModal from './ReassignmentModal';
 import { ROUTES } from '@/lib/routes';
-import { formatInTimezone, getClientTimezone, convertToTimezone } from '@/lib/timezone_util';
+import { formatInTimezone, getClientTimezone, convertToTimezone, BACKEND_TIMEZONE } from '@/lib/timezone_util';
 
 // Format date and time as "MMM DD, h:mm am/pm" with capitalized month
 const formatTime = (dateString) => {
@@ -15,7 +15,7 @@ const formatTime = (dateString) => {
     try {
         const timezone = getClientTimezone();
         // Convert to client timezone
-        const converted = convertToTimezone(dateString, timezone, 'EST');
+        const converted = convertToTimezone(dateString, timezone, BACKEND_TIMEZONE);
         if (converted) {
             const formatted = converted.toFormat('MMM dd, h:mm a');
             // Split by comma to separate date and time
@@ -63,7 +63,7 @@ export default function AssigneeSection({ jobNo: jobNoProp, toast, isUpcomingTas
             setIsLoading(true);
             try {
                 const data = await assigneeAPI.getAvailableAssignees();
-                const current = data.find(u => u.is_current_user);
+                const current = data.find(u => u.is_current_resource);
                 setCurrentUser(current || data[0] || null);
                 setAssignees(data);
             } catch (err) {
@@ -86,7 +86,7 @@ export default function AssigneeSection({ jobNo: jobNoProp, toast, isUpcomingTas
     }, [isDropdownOpen]);
 
     const otherAssignees = assignees
-        .filter(a => !a.is_current_user)
+        .filter(a => !a.is_current_resource)
         .sort((a, b) => a.name.localeCompare(b.name));
 
     const handleSelect = (assignee) => {
@@ -101,7 +101,7 @@ export default function AssigneeSection({ jobNo: jobNoProp, toast, isUpcomingTas
         }
         setIsReassigning(true);
         try {
-            const response = await assigneeAPI.reassignJob(jobNo, selectedAssignee.id, selectedAssignee.entered_by, reason);
+            const response = await assigneeAPI.reassignJob(jobNo, selectedAssignee.rsrc_no, reason);
             console.log('response', response);
             if (response.success) {
                 toast?.success(`Job reassigned to ${selectedAssignee.name}`);
@@ -164,9 +164,11 @@ export default function AssigneeSection({ jobNo: jobNoProp, toast, isUpcomingTas
                             </div>
                             <div className="max-h-60 overflow-y-auto">
                                 {otherAssignees.length > 0 ? (
-                                    otherAssignees.map((assignee) => (
+                                otherAssignees.map((assignee, index) => {
+                                    const safeKey = assignee.rsrc_no || assignee.name || `assignee-${index}`;
+                                    return (
                                         <button
-                                            key={assignee.id}
+                                            key={safeKey}
                                             onClick={() => handleSelect(assignee)}
                                             className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 text-left"
                                         >
@@ -181,7 +183,8 @@ export default function AssigneeSection({ jobNo: jobNoProp, toast, isUpcomingTas
                                             )}
                                             <span className="text-sm font-medium text-gray-900">{assignee.name}</span>
                                         </button>
-                                    ))
+                                    );
+                                })
                                 ) : (
                                     <div className="px-3 py-4 text-sm text-gray-500 text-center">No assignees found</div>
                                 )}

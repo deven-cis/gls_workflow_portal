@@ -35,7 +35,7 @@ export default function SettingPage() {
   const [newPasswordError, setNewPasswordError] = useState("");
   const [samePasswordError, setSamePasswordError] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [userId, setUserId] = useState(null);
+  const [rsrcNo, setRsrcNo] = useState(null);
 
   const resolveUrl = resolveFileUrl;
 
@@ -245,7 +245,7 @@ export default function SettingPage() {
       return;
     }
 
-    if (!userId) {
+    if (!rsrcNo) {
       toast.error("User ID not found. Please refresh the page.");
       return;
     }
@@ -258,7 +258,7 @@ export default function SettingPage() {
 
     try {
       await userSettingsAPI.changePassword(
-        userId,
+        rsrcNo,
         passwordData.oldPassword,
         passwordData.newPassword
       );
@@ -302,8 +302,8 @@ export default function SettingPage() {
           email: profile?.email || profile?.login_name || prev.email,
         }));
         setProfileImageSrc(computedUrl);
-        // Get user_id from profile (could be user_id, id, or user_id)
-        setUserId(profile?.user_id || profile?.id || profile?.user_id);
+        // Get rsrc_no from profile (could be rsrc_no, id, or rsrc_no)
+        setRsrcNo(profile?.rsrc_no || profile?.id);
       } catch (e) {
         // Fallback: use local user cache for name/email only
         const u = getUser();
@@ -313,8 +313,8 @@ export default function SettingPage() {
             fullName: u.full_name || u.fullName || u.login_name || prev.fullName,
             email: u.email || u.login_name || prev.email,
           }));
-          // Get user_id from local user cache
-          setUserId(u?.user_id || u?.id || u?.user_id);
+          // Get rsrc_no from local user cache
+          setRsrcNo(u?.rsrc_no || u?.id);
         }
         console.warn("Failed to load user profile from backend", e);
       }

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { sessionAPI } from '@/services/session_button';
 import { DateTime } from 'luxon';
-import { getClientTimezone, convertToTimezone } from '@/lib/timezone_util';
+import { getClientTimezone, convertToTimezone, BACKEND_TIMEZONE } from '@/lib/timezone_util';
 
 /**
  * Custom hook to manage all session-related state and operations
@@ -37,14 +37,38 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
         return normalized === 'session started';
     });
 
-    // Convert time to client timezone
+    // Convert backend time to client timezone.
+    // Backend historically stored naive timestamps; intended source is EST, but some environments produce UTC-like values.
+    // Strategy:
+    // - If ISO has offset/Z: trust it.
+    // - If naive: interpret as EST first; if that results in a future time vs client "now", fall back to UTC.
     const convertToClientTimezone = useCallback((timeString) => {
         if (!timeString) return null;
         
         try {
             const clientTimezone = getClientTimezone();
-            // Convert to client timezone
-            const converted = convertToTimezone(timeString, clientTimezone, 'EST');
+            const timeStr = String(timeString);
+            const hasExplicitOffset = /([zZ]|[+\-]\d{2}:\d{2})$/.test(timeStr);
+
+            // Backend time is persisted in EST with no offset in ISO string.
+            // If the string already has an offset/Z, trust it and just convert to client timezone.
+            if (hasExplicitOffset) {
+                const converted = DateTime.fromISO(timeStr).setZone(clientTimezone);
+                return converted.isValid ? converted.toISO() : timeStr;
+            }
+
+            const nowClient = DateTime.now().setZone(clientTimezone);
+            const estAsClient = convertToTimezone(timeStr, clientTimezone, BACKEND_TIMEZONE); // intended path (DST-aware ET)
+
+            // If interpreting as EST yields a time in the future, fall back to UTC interpretation.
+            const shouldFallbackToUtc =
+                estAsClient?.isValid &&
+                nowClient.isValid &&
+                estAsClient.toMillis() > nowClient.plus({ minutes: 1 }).toMillis();
+
+            const converted = shouldFallbackToUtc
+                ? convertToTimezone(timeStr, clientTimezone, 'UTC')
+                : estAsClient;
             return converted ? converted.toISO() : timeString;
         } catch (error) {
             console.warn('Error converting time to client timezone:', error);
@@ -55,55 +79,77 @@ export const useSessionManagement = (toast, isUpcomingTask = false, onStatusChan
     // Format duration as HH:MM:SS based on client timezone
     const formatDuration = useCallback((startTime) => {
         if (!startTime) return '00:00:00';
-        
+
+        const fallbackDuration = () => {
+            const now = new Date();
+            const start = new Date(startTime);
+            const diffMs = now - start;
+
+            if (Number.isNaN(diffMs) || diffMs < 0) {
+                return '00:00:00';
+            }
+
+            const hours = Math.floor(diffMs / (1000 * 60 * 60));
+            const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+
+            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        };
+
         try {
             // Get client timezone
             const clientTimezone = getClientTimezone();
-            
-            // Parse start time and convert to client timezone
-            let startDt = DateTime.fromISO(startTime);
-            
-            // If time doesn't have timezone info, assume EST and convert to client timezone
-            if (!startDt.zoneName || startDt.zoneName === 'EST') {
-                startDt = convertToTimezone(startTime, clientTimezone, 'EST');
+
+            // Parse start time and convert to client timezone.
+            // - If it already has an offset/Z, trust that and just convert.
+            // - If it's naive (no offset), interpret it as EST from backend and convert.
+            const startStr = String(startTime);
+            const hasExplicitOffset = /([zZ]|[+\-]\d{2}:\d{2})$/.test(startStr);
+            let startDt;
+            if (hasExplicitOffset) {
+                startDt = DateTime.fromISO(startStr).setZone(clientTimezone);
             } else {
-                // Already has timezone, convert to client timezone
-                startDt = startDt.setZone(clientTimezone);
+                // Intended: EST -> client. If that yields a future start time, fall back to UTC -> client.
+                const nowClient = DateTime.now().setZone(clientTimezone);
+                const estStart = DateTime.fromISO(startStr, { zone: BACKEND_TIMEZONE }).setZone(clientTimezone);
+                const useUtcFallback =
+                    estStart.isValid &&
+                    nowClient.isValid &&
+                    estStart.toMillis() > nowClient.plus({ minutes: 1 }).toMillis();
+
+                startDt = useUtcFallback
+                    ? DateTime.fromISO(startStr, { zone: 'UTC' }).setZone(clientTimezone)
+                    : estStart;
             }
-            
+
+            if (!startDt.isValid) {
+                return fallbackDuration();
+            }
+
             // Get current time in client timezone
             const nowDt = DateTime.now().setZone(clientTimezone);
-            
-            if (!startDt || !startDt.isValid || !nowDt.isValid) {
-                return '00:00:00';
+
+            if (!startDt.isValid || !nowDt.isValid) {
+                return fallbackDuration();
             }
-            
+
             // Calculate duration difference in milliseconds
-            const diffMs = nowDt - startDt;
-            
+            const diffMs = nowDt.toMillis() - startDt.toMillis();
+
             if (diffMs < 0) {
-                return '00:00:00';
+                return fallbackDuration();
             }
-            
+
             // Calculate hours, minutes, seconds from milliseconds
             const totalSeconds = Math.floor(diffMs / 1000);
             const hours = Math.floor(totalSeconds / 3600);
             const minutes = Math.floor((totalSeconds % 3600) / 60);
             const seconds = totalSeconds % 60;
-            
+
             return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         } catch (error) {
             console.warn('Error calculating duration with timezone:', error);
-            // Fallback to basic calculation
-            const now = new Date();
-            const start = new Date(startTime);
-            const diffMs = now - start;
-            
-            const hours = Math.floor(diffMs / (1000 * 60 * 60));
-            const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-            
-            return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            return fallbackDuration();
         }
     }, []);
 

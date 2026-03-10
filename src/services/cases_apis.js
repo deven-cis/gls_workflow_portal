@@ -6,7 +6,7 @@ import { endpoints } from '@/constants/endpoints';
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
   const jobYear = jobDate.getFullYear();
-  const dateStr = jobDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric'});
+  const dateStr = jobDate.toLocaleDateString('en-US', {day: 'numeric', month: 'short', year: 'numeric' });
   const start_time = job.start_time ? job.start_time.substring(0, 5) : '00:00';
   const end_time = job.end_time ? job.end_time.substring(0, 5) : '00:00';
   const startTimeStr = formatTime12Hour(start_time);
