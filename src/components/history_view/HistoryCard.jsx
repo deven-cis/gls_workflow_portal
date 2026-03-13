@@ -54,7 +54,7 @@ const HistoryCard = ({ item, onClick, activeTab }) => {
 
                 {/* Right: Status & Actions */}
                 <div className="flex items-center gap-3 flex-shrink-0">
-                    <span className="text-gray-400 text-sm px-3 py-1 bg-gray-100 rounded-full">{item.jobId}</span>
+                    <span className="text-gray-400 text-sm px-3 py-1 bg-gray-100 rounded-full">{item.jobNo}</span>
                     <div className={`text-xs px-3 py-1 rounded-full font-medium ${item.status === 'Completed'
                         ? 'bg-green-50 text-green-700'
                         : 'bg-red-50 text-red-700'

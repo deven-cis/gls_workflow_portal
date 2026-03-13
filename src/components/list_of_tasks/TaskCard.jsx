@@ -296,7 +296,7 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                             )}
                             {task.jobId && (
                                 <span className={`text-xs md:text-sm ${styles.textSubtle} hidden md:inline`}>
-                                    {task.jobId}
+                                    {task.jobNo}
                                 </span>
                             )}
                             <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>

@@ -429,7 +429,7 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
     useEffect(() => {
         fetchSessionStatus(task);
         // Dependencies: selectedJobId (main trigger), task?.id (when task changes)
-    }, [selectedJobId, task?.id, searchParams, params, fetchSessionStatus]);
+    }, [selectedJobId, task?.id, searchParams, params]);
 
     const progress = Math.round((completedSteps.length / steps.length) * 100);
 

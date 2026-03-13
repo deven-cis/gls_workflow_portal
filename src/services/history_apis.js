@@ -12,6 +12,7 @@ const mapJobToHistory = (job) => {
   return {
     id: job.job_no,
     jobId: `Job${job.job_no}`,
+    jobNo: `Job ${job.job_no}`,
     date: dateStr,
     time: timeStr,
     title: job.case?.case_short_name ? (job.case?.case_type ? `${job.case.case_type}: ${job.case.case_short_name}` : job.case.case_short_name) : `Job #${job.job_no}`,

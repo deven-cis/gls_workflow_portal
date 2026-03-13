@@ -1,6 +1,6 @@
 "use client";
 import { useRef, useState, useEffect } from 'react';
-import { MapPin, Clock, MoreVertical, Trash2 } from 'lucide-react';
+import { MapPin, Clock, MoreVertical, Trash2, Briefcase } from 'lucide-react';
 import AssigneeSection from './AssigneeSection';
 import { useEffectiveJobNo } from '@/hooks/useJobContext';
 
@@ -147,9 +147,15 @@ export default function TaskInfoPanel({
 
             {/* Location and Time */}
             <div className="space-y-3 mb-6">
+                {jobNo && (
+                    <div className="flex items-center gap-2 text-gray-600">
+                        <Briefcase className="w-5 h-5" />
+                        <span className="text-sm">Job No: {jobNo}</span>
+                    </div>
+                )}
                 {task.location && (
                     <div className="flex items-center gap-2 text-gray-600">
-                        <MapPin className="w-5 h-5" />
+                        <MapPin className="w-6 h-6" />
                         <span className="text-sm">{task.location}</span>
                     </div>
                 )}

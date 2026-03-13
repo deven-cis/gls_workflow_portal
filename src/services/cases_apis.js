@@ -15,6 +15,7 @@ const mapJobToTask = (job) => {
   return {
     id: job.job_no,
     jobId: `Job${job.job_no}`,
+    jobNo: `Job ${job.job_no}`,
     date: dateStr,
     jobYear: jobYear,
     startTime: startTimeStr,
