@@ -274,9 +274,9 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                                     <span>{task.platform}</span>
                                 </div>
                             )}
-                            {task.jobId && (
+                            {task.jobNo && (
                                 <span className={`${styles.badge} px-2 py-1 rounded-2xl text-xs`}>
-                                    {task.jobId}
+                                    {task.jobNo}
                                 </span>
                             )}
                         </div>
@@ -294,7 +294,7 @@ export default function TaskCard({ task, isHighlighted = false, isSelected = fal
                                     {task.uploadProgress}
                                 </span>
                             )}
-                            {task.jobId && (
+                            {task.jobNo && (
                                 <span className={`text-xs md:text-sm ${styles.textSubtle} hidden md:inline`}>
                                     {task.jobNo}
                                 </span>
