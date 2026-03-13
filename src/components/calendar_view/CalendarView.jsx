@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Clock, X, MapPin, Calendar as CalendarIcon, 
 import { calendarAPI } from '@/services/calendar_apis';
 import { DateTime } from 'luxon';
 import { getClientTimezone, convertToTimezone } from '@/lib/timezone_util';
-
+import { getUser } from '@/lib/auth';
 // Format video_status object to string for tooltip
 const formatVideoStatus = (videoStatus) => {
   if (!videoStatus || typeof videoStatus !== 'object') return '';
@@ -237,7 +237,7 @@ function ViewToggle({ viewMode, onViewChange }) {
 
 // Main CalendarView Component
 export default function CalendarView({ 
-  userName = "Jakir", 
+  userName = getUser()?.rsrc_name || 'User', 
   showHero = true,
   initialDate = null,
   initialViewMode = 'month'

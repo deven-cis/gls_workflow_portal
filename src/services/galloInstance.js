@@ -1,4 +1,4 @@
-import { getRefreshToken, logout } from '@/lib/auth';
+import { getToken, getRefreshToken, logout, setToken, setRefreshToken } from '@/lib/auth';
 import { API_BASE_URL } from '@/lib/config';
 
 /**
@@ -66,12 +66,10 @@ async function refreshAccessToken() {
 
         if (tokenPayload?.access_token) {
             console.log('Token refreshed successfully');
-            // Store tokens in localStorage
-            if (typeof window !== 'undefined') {
-                localStorage.setItem('access_token', tokenPayload.access_token);
-                if (tokenPayload.refresh_token) {
-                    localStorage.setItem('refresh_token', tokenPayload.refresh_token);
-                }
+            // Store tokens using auth helpers (also decodes and stores claims)
+            setToken(tokenPayload.access_token);
+            if (tokenPayload.refresh_token) {
+                setRefreshToken(tokenPayload.refresh_token);
             }
             return tokenPayload;
         } else {
@@ -113,8 +111,8 @@ async function handleTokenRefreshInternal() {
 export const galloInstance = async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}${endpoint}`;
     
-    // Get the access token from localStorage
-    let token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    // Get the access token using auth helper
+    let token = typeof window !== 'undefined' ? getToken() : null;
     
     // Check if body is FormData - if so, don't set Content-Type (browser will set it with boundary)
     // Be robust: instanceof can fail across realms/polyfills
@@ -167,7 +165,7 @@ export const galloInstance = async (endpoint, options = {}) => {
             await handleTokenRefreshInternal();
             
             // Retry the original request with new token
-            const newToken = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+            const newToken = typeof window !== 'undefined' ? getRefreshToken() : null;
             if (newToken) {
                 const retryConfig = {
                     ...config,

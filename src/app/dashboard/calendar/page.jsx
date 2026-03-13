@@ -11,7 +11,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     const user = getUser();
-    const name = user?.full_name || user?.fullName || user?.login_name || user?.email || 'User';
+    const name = user?.rsrc_name || 'User';
     setUserName(name);
   }, []);
 

@@ -3,6 +3,15 @@ export const AUTH_TOKEN_KEY = 'access_token';
 export const REFRESH_TOKEN_KEY = 'refresh_token';
 export const USER_KEY = 'resource';
 
+// JWT claim keys
+export const LOGIN_NAME_KEY = 'login_name';
+export const RSRC_NO_KEY = 'rsrc_no';
+export const RSRC_NAME_KEY = 'rsrc_name';
+export const RSRC_ROLE_KEY = 'rsrc_role';
+export const EXP_KEY = 'exp';
+export const TYPE_KEY = 'type';
+export const AUTH_SCHEME_KEY = 'auth_scheme';
+
 export function getToken() {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(AUTH_TOKEN_KEY);
@@ -26,15 +35,21 @@ export function setToken(token) {
     if (typeof window === 'undefined') return;
     if (token) {
         window.localStorage.setItem(AUTH_TOKEN_KEY, token);
+        // Decode and store claims from token
+        const claims = decodeJWT(token);
+        if (claims) {
+            window.localStorage.setItem(USER_KEY, JSON.stringify(claims));
+        }
     } else {
         window.localStorage.removeItem(AUTH_TOKEN_KEY);
+        window.localStorage.removeItem(USER_KEY);
     }
 }
 
 export function getUser() {
     if (typeof window === 'undefined') return null;
     try {
-        const raw = window.localStorage.getItem(USER_KEY);
+        const raw = window.localStorage.getItem( );
         if (!raw) return null;
         return JSON.parse(raw);
     } catch (e) {
@@ -43,14 +58,6 @@ export function getUser() {
     }
 }
 
-export function setUser(resource) {
-    if (typeof window === 'undefined') return;
-    if (resource) {
-        window.localStorage.setItem(USER_KEY, JSON.stringify(resource));
-    } else {
-        window.localStorage.removeItem(USER_KEY);
-    }
-}
 
 export function isAuthenticated() {
     return !!getToken();
@@ -82,20 +89,41 @@ export function decodeJWT(token) {
     }
 }
 
-// Check if token is expired
-export function isTokenExpired(token) {
-    const decoded = decodeJWT(token);
-    if (!decoded || !decoded.exp) return true;
-    
-    const currentTime = Date.now() / 1000;
-    return decoded.exp < currentTime;
+
+// Get specific claim from stored user
+export function getUserClaim(claimKey) {
+    const user = getUser();
+    return user ? user[claimKey] : null;
 }
 
-// Get time until token expires (in seconds)
-export function getTokenTimeUntilExpiry(token) {
-    const decoded = decodeJWT(token);
-    if (!decoded || !decoded.exp) return 0;
-    
-    const currentTime = Date.now() / 1000;
-    return Math.max(0, decoded.exp - currentTime);
+// Get role from token claims
+export function getUserRole() {
+    return getUserClaim(RSRC_ROLE_KEY);
+}
+
+// Check if user has specific role
+export function hasRole(role) {
+    const userRole = getUserRole();
+    return userRole === role;
+}
+
+// Check if user has any of the given roles
+export function hasAnyRole(roles) {
+    const userRole = getUserRole();
+    return roles.includes(userRole);
+}
+
+// Get resource number
+export function getResourceNo() {
+    return getUserClaim(RSRC_NO_KEY);
+}
+
+// Get resource name
+export function getResourceName() {
+    return getUserClaim(RSRC_NAME_KEY);
+}
+
+// Get login name
+export function getLoginName() {
+    return getUserClaim(LOGIN_NAME_KEY);
 }

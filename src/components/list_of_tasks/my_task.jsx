@@ -129,7 +129,7 @@ export default function MyTasks() {
 
     useEffect(() => {
         const u = getUser();
-        setUserName(u?.full_name || u?.fullName || u?.login_name || u?.email || 'User');
+        setUserName(u?.rsrc_name || 'User');
     }, []);
 
     // Memoized view change handlers for better performance

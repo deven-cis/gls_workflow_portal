@@ -3,7 +3,6 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { authAPI } from '@/services/api';
-import { setUser } from '@/lib/auth';
 import { ROUTES } from '@/lib/routes';
 
 export default function LoginPage() {
@@ -34,22 +33,7 @@ export default function LoginPage() {
             console.log('Login response:', response);
             
             if (response.access_token) {
-                console.log('Login successful, storing tokens');
-                // Store the access token in localStorage
-                localStorage.setItem('access_token', response.access_token);
-                
-                // If there's a refresh token, store it as well
-                if (response.refresh_token) {
-                    localStorage.setItem('refresh_token', response.refresh_token);
-                }
-
-                // Store user details for Settings/Header usage
-                if (response.resource) {
-                    setUser(response.resource);
-                }
-                
-                // Redirect to dashboard on successful login
-                console.log('Redirecting to dashboard...');
+                console.log('Login successful, redirecting...');
                 router.push(ROUTES.DASHBOARD.LIST_OF_TASKS);
             } else {
                 console.log('No access token in response');

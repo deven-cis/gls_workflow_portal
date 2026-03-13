@@ -1,6 +1,7 @@
 import { galloInstance } from './galloInstance.js';
 import { formatTime12Hour } from '@/lib/utils';
 import { endpoints } from '@/constants/endpoints';
+import { setToken, setRefreshToken } from '@/lib/auth';
 
 const mapJobToTask = (job) => {
   const jobDate = new Date(job.job_date);
@@ -51,7 +52,19 @@ export const authAPI = {
       const message = response?.result?.message || response?.message || 'Login failed';
       throw new Error(message);
     }
-    return response?.result ?? response;
+
+    const result = response?.result ?? response;
+    
+    // Store tokens if login successful
+    if (result?.access_token) {
+      console.log('Login successful, storing tokens');
+      setToken(result.access_token);
+      if (result.refresh_token) {
+        setRefreshToken(result.refresh_token);
+      }
+    }
+    
+    return result;
   },
 
   logout: () => {
