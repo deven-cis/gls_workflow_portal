@@ -1,11 +1,29 @@
 "use client";
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Menu, History, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getUserRole } from '@/lib/auth';
+import { useState } from 'react';
+
+// Dynamic navigation URLs
+const NAV_URLS = {
+    MY_TASKS: '/dashboard/list_of_tasks',
+    HISTORY: '/dashboard/history',
+    SETTINGS: '/dashboard/settings',
+};
 
 export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
     const pathname = usePathname();
+    const router = useRouter();
+    const userRole = getUserRole();
+    const [showAllHistory, setShowAllHistory] = useState(false);
+    const isInterpreterLanguage = userRole === 'Interpreter - Language';
 
+    const handleToggleAllHistory = (newState) => {
+        setShowAllHistory(newState);
+        const url = newState ? `${NAV_URLS.HISTORY}?admin=true` : NAV_URLS.HISTORY;
+        router.push(url);
+    };
     return (
         <>
             <aside
@@ -46,9 +64,9 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
 
                 {/* Navigation */}
                 <nav className="flex-1 px-3 py-4 space-y-1">
-                    <Link href="/dashboard/list_of_tasks">
+                    <Link href={NAV_URLS.MY_TASKS}>
                         <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
-                            pathname === '/dashboard/list_of_tasks' || pathname.startsWith('/dashboard/task-details')
+                            pathname === NAV_URLS.MY_TASKS || pathname.startsWith('/dashboard/task-details')
                                 ? 'text-red-800 bg-red-50' 
                                 : 'text-gray-600 hover:bg-gray-50'
                         }`}>
@@ -59,25 +77,46 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
                         </button>
                     </Link>
 
-                    <Link href="/dashboard/history">
-                        <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
-                            pathname === '/dashboard/history'
-                                ? 'text-red-800 bg-red-50' 
-                                : 'text-gray-600 hover:bg-gray-50'
-                        }`}>
-                            <History className="w-5 h-5 flex-shrink-0" />
-                            {!isSidebarCollapsed && (
-                                <span className="text-sm">History</span>
-                            )}
-                        </button>
-                    </Link>
+                    <div className="flex items-center gap-2">
+                        <Link href={NAV_URLS.HISTORY} className="flex-1">
+                            <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
+                                pathname === NAV_URLS.HISTORY
+                                    ? 'text-red-800 bg-red-50' 
+                                    : 'text-gray-600 hover:bg-gray-50'
+                            }`}>
+                                <History className="w-5 h-5 flex-shrink-0" />
+                                {!isSidebarCollapsed && (
+                                    <span className="text-sm">{showAllHistory ? 'All History' : 'History'}</span>
+                                )}
+                            </button>
+                        </Link>
+                        {isInterpreterLanguage && !isSidebarCollapsed && (
+                            <div
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    handleToggleAllHistory(!showAllHistory);
+                                }}
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer mr-2 ${
+                                    showAllHistory ? 'bg-red-800' : 'bg-gray-300'
+                                }`}
+                                role="switch"
+                                aria-checked={showAllHistory}
+                            >
+                                <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                        showAllHistory ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </nav>
 
                 {/* Settings */}
                 <div className="border-t border-gray-100 p-3">
-                <Link href="/dashboard/settings">   
+                <Link href={NAV_URLS.SETTINGS}>   
                     <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
-                        pathname === '/dashboard/settings'
+                        pathname === NAV_URLS.SETTINGS
                             ? 'text-red-800 bg-red-50' 
                             : 'text-gray-600 hover:bg-gray-50'
                     }`}>

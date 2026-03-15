@@ -49,7 +49,7 @@ export function setToken(token) {
 export function getUser() {
     if (typeof window === 'undefined') return null;
     try {
-        const raw = window.localStorage.getItem( );
+        const raw = window.localStorage.getItem(USER_KEY);
         if (!raw) return null;
         return JSON.parse(raw);
     } catch (e) {

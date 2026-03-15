@@ -20,6 +20,9 @@ export default function HistoryView() {
     const tabFromUrl = searchParams.get('tab');
     const initialTab = tabFromUrl === 'cancelled' ? 'cancelled' : 'completed';
     
+    // Check if admin mode is enabled (show all history)
+    const adminMode = searchParams.get('admin') === 'true';
+    
     const [activeTab, setActiveTab] = useState(initialTab);
     const [activeView, setActiveView] = useState('History');
     const [showCalendar, setShowCalendar] = useState(false);
@@ -112,7 +115,7 @@ export default function HistoryView() {
                 const pageSize = activeTab === 'completed' ? completedPagination.pageSize : cancelledPagination.pageSize;
                 const currentFilters = activeTab === 'completed' ? completedSearchFilters : cancelledSearchFilters;
                 
-                const result = await historyAPI.getJobsByType(type, currentStartDate, currentEndDate, currentPage, pageSize, currentFilters);
+                const result = await historyAPI.getJobsByType(type, currentStartDate, currentEndDate, currentPage, pageSize, currentFilters, adminMode);
                 
                 // Debug: Log pagination data
                 console.log(`${type} jobs pagination:`, result.pagination);
@@ -138,7 +141,7 @@ export default function HistoryView() {
         };
 
         fetchJobs();
-    }, [activeTab, completedStartDate, completedEndDate, cancelledStartDate, cancelledEndDate, completedPagination.page, cancelledPagination.page, completedSearchFilters, cancelledSearchFilters]);
+    }, [activeTab, completedStartDate, completedEndDate, cancelledStartDate, cancelledEndDate, completedPagination.page, cancelledPagination.page, completedSearchFilters, cancelledSearchFilters, adminMode]);
     
     // Reset pagination to page 1 when search filters change
     useEffect(() => {

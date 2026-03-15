@@ -40,7 +40,8 @@ export const historyAPI = {
   // page: page number (default: 1)
   // pageSize: items per page (handled by backend default)
   // searchParams: object with optional search filters { jobNo, witnessName, caseName, caseNumber }
-  getJobsByType: async (type, startDate = null, endDate = null, page = null, pageSize = null, searchParams = {}) => {
+  // adminMode: boolean (optional) - if true, fetch all history; if false, fetch user-specific history
+  getJobsByType: async (type, startDate = null, endDate = null, page = null, pageSize = null, searchParams = {}, adminMode = false) => {
     try {
       // Format dates to YYYY-MM-DD for API
       const formatDateForAPI = (date) => {
@@ -60,6 +61,11 @@ export const historyAPI = {
         params.append('end_date', formatDateForAPI(endDate));
       }
       params.append('page', page.toString());
+      
+      // Add admin parameter if adminMode is true
+      if (adminMode) {
+        params.append('admin', 'true');
+      }
       
       // Add search parameters if provided
       if (searchParams.jobNo && searchParams.jobNo.trim()) {
