@@ -1,5 +1,5 @@
 import { galloInstance } from './galloInstance';
-import { formatTime12Hour, downloadFile } from '@/lib/utils';
+import { formatTime12Hour, downloadFile, extractFileExtension } from '@/lib/utils';
 import { API_BASE_URL } from '@/lib/config';
 import { endpoints } from '@/constants/endpoints';
 
@@ -204,7 +204,9 @@ export const historyAPI = {
   
   downloadVideo: async (filePath, fileName) => {
       const downloadUrl = `${API_BASE_URL}/${filePath}`;
-    return downloadFile(downloadUrl, fileName || 'video.mp4');
+      const ext = extractFileExtension('', filePath, 'mp4');
+      const dynamicFileName = fileName || `video.${ext}`;
+    return downloadFile(downloadUrl, dynamicFileName);
   },
 
   // Download all videos merged into one file
@@ -212,6 +214,7 @@ export const historyAPI = {
   // Returns FileResponse (merged video file)
   downloadAllVideos: async (jobNo) => {
       const downloadUrl = `${API_BASE_URL}/jobs/get/${jobNo}/completed_details?download_all=true`;
+      // Extension will be determined from Content-Disposition header, fallback to mp4
     return downloadFile(downloadUrl, 'all_videos_merged.mp4');
   },
 };

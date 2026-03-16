@@ -532,14 +532,14 @@ export default function WitnessManagement({
                                                         </div>
                                                         <div>
                                                             <p className="text-sm font-medium text-gray-700">Upload Video</p>
-                                                            <p className="text-xs text-gray-500">MPEG or MP4 formats.</p>
+                                                        <p className="text-xs text-gray-500">MPEG, MP4, or MKV formats.</p>
                                                         </div>
                                                     </div>
                                                     <label className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
                                                         Upload
                                                         <input
                                                             type="file"
-                                                            accept="video/mpeg,video/mp4,.mp4,.mpeg,.mpg"
+                                                            accept="video/mpeg,video/mp4,video/x-matroska,.mp4,.mpeg,.mpg,.mkv"
                                                             className="hidden"
                                                             onChange={(e) => handleUploadVideo(witness.id, record.id, e.target.files?.[0])}
                                                         />

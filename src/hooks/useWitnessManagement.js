@@ -430,8 +430,9 @@ export const useWitnessManagement = (witnessesData, toast) => {
         const mime = (file.type || '').toLowerCase();
         const isMp4 = mime === 'video/mp4' || fileName.endsWith('.mp4');
         const isMpeg = mime === 'video/mpeg' || fileName.endsWith('.mpeg') || fileName.endsWith('.mpg');
-        if (!isMp4 && !isMpeg) {
-            toast.error('Only MPEG or MP4 formats are allowed.');
+        const isMkv = mime === 'video/x-matroska' || mime === 'video/matroska' || fileName.endsWith('.mkv');
+        if (!isMp4 && !isMpeg && !isMkv) {
+            toast.error('Only MPEG, MP4, or MKV formats are allowed.');
             return;
         }
 

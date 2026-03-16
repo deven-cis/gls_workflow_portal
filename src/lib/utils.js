@@ -164,6 +164,55 @@ export const validateEquipmentTime = (equipmentInfo) => {
 };
 
 /**
+ * Extract file extension from URL or Content-Disposition header
+ * @param {string} contentDisposition - Content-Disposition header value
+ * @param {string} url - Download URL
+ * @param {string} defaultExt - Default extension (e.g., 'mp4')
+ * @returns {string} File extension without dot (e.g., 'mp4', 'mkv')
+ */
+export const extractFileExtension = (contentDisposition = '', url = '', defaultExt = 'mp4') => {
+  // First try to extract from Content-Disposition header
+  if (contentDisposition) {
+    const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (fileNameMatch && fileNameMatch[1]) {
+      const fileName = fileNameMatch[1].replace(/['"]*/g, '');
+      const extMatch = fileName.match(/\.(\w+)$/);
+      if (extMatch) return extMatch[1].toLowerCase();
+    }
+  }
+  
+  // Try to extract from URL
+  if (url) {
+    const urlPath = url.split('?')[0]; // Remove query params
+    const extMatch = urlPath.match(/\.(\w+)$/);
+    if (extMatch) return extMatch[1].toLowerCase();
+  }
+  
+  // Return default extension
+  return defaultExt.toLowerCase();
+};
+
+/**
+ * Extract filename from URL or Content-Disposition header
+ * @param {string} contentDisposition - Content-Disposition header value
+ * @param {string} url - Download URL
+ * @param {string} defaultFileName - Default filename if not found
+ * @returns {string} Filename with extension
+ */
+export const extractFileName = (contentDisposition = '', url = '', defaultFileName = 'download.mp4') => {
+  // First try Content-Disposition header
+  if (contentDisposition) {
+    const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+    if (fileNameMatch && fileNameMatch[1]) {
+      return fileNameMatch[1].replace(/['"]*/g, '');
+    }
+  }
+  
+  // Return default
+  return defaultFileName;
+};
+
+/**
  * Shared utility function to download a file from the API
  * @param {string} downloadUrl - Full URL to download from
  * @param {string} defaultFileName - Default filename if not found in headers
@@ -191,13 +240,7 @@ export const downloadFile = async (downloadUrl, defaultFileName = 'download.mp4'
     
     // Get filename from Content-Disposition header or use default
     const contentDisposition = response.headers.get('content-disposition');
-    let fileName = defaultFileName;
-    if (contentDisposition) {
-      const fileNameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-      if (fileNameMatch && fileNameMatch[1]) {
-        fileName = fileNameMatch[1].replace(/['"]/g, '');
-      }
-    }
+    const fileName = extractFileName(contentDisposition, downloadUrl, defaultFileName);
     
     // Create a download link and trigger download
     const url = window.URL.createObjectURL(blob);

@@ -1,5 +1,5 @@
 import { galloInstance } from './galloInstance';
-import { downloadFile } from '@/lib/utils';
+import { downloadFile, extractFileExtension } from '@/lib/utils';
 import { API_BASE_URL } from '@/lib/config';
 import { endpoints } from '@/constants/endpoints';
 export const witnessesAPI = {
@@ -110,7 +110,9 @@ export const witnessesAPI = {
         const sanitizedName = witnessName 
             ? witnessName.replace(/[^a-zA-Z0-9_-]/g, '_').trim()
             : `job_${jobNo}_witness_${witnessId}`;
-        const defaultFileName = `${sanitizedName}_complete_video.mp4`;
+        // Extract dynamic extension from URL or use mp4 as default
+        const ext = extractFileExtension('', downloadUrl, 'mp4');
+        const defaultFileName = `${sanitizedName}_complete_video.${ext}`;
         return downloadFile(downloadUrl, defaultFileName);
     },
 };
