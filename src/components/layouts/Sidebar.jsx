@@ -108,12 +108,16 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
                         </button>
                     </Link>
 
-                    <div className="flex items-center gap-2">
+                    <div className={`flex items-center gap-0 px-3 rounded-lg transition-colors ${
+                        pathname === NAV_URLS.HISTORY
+                            ? 'bg-red-50' 
+                            : 'hover:bg-gray-50'
+                    }`}>
                         <Link href={showAllHistory ? `${NAV_URLS.HISTORY}?admin=true` : NAV_URLS.HISTORY} className="flex-1">
-                            <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
+                            <button className={`w-full flex items-center gap-3 px-1 py-3 rounded-lg transition-colors font-medium ${
                                 pathname === NAV_URLS.HISTORY
-                                    ? 'text-red-800 bg-red-50' 
-                                    : 'text-gray-600 hover:bg-gray-50'
+                                    ? 'text-red-800' 
+                                    : 'text-gray-600'
                             }`}>
                                 <History className="w-5 h-5 flex-shrink-0" />
                                 {!isSidebarCollapsed && (
@@ -127,7 +131,7 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
                                     e.preventDefault();
                                     handleToggleAllHistory(!showAllHistory);
                                 }}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer mr-2 ${
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
                                     showAllHistory ? 'bg-red-800' : 'bg-gray-300'
                                 }`}
                                 role="switch"
