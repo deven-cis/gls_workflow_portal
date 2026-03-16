@@ -52,10 +52,34 @@ async function refreshAccessToken() {
             throw new Error('No access token in refresh response');
         }
     } catch (error) {
-        console.error('Token refresh failed:', error);
-        // If refresh fails, clear all tokens and logout
-        logout();
-        throw error;
+        // Extract status code if available
+        const status = error?.response?.status || error?.status;
+        
+        if (status === 429) {
+            // 429: Too Many Requests - another refresh is in progress
+            console.warn('Token refresh in progress (429 - Too Many Requests)');
+            console.warn('Retrying after delay...');
+            
+            // Wait 100ms and retry
+            await new Promise(r => setTimeout(r, 100));
+            
+            // Recursive retry (will be caught by outer handler if fails again)
+            return refreshAccessToken();
+        } else if (status === 401) {
+            // 401: Unauthorized - refresh token is invalid/expired
+            console.error('Refresh token invalid or expired (401)');
+            logout();
+            throw new Error('Refresh token expired - please login again');
+        } else if (status === 500) {
+            // 500: Server error
+            console.error('Server error during token refresh (500)', error);
+            throw new Error('Server error during token refresh');
+        } else {
+            // Other errors
+            console.error('Token refresh failed:', error?.message || error);
+            logout();
+            throw error;
+        }
     }
 }
 
@@ -65,6 +89,7 @@ async function refreshAccessToken() {
 export async function handleTokenRefresh() {
     if (isRefreshing) {
         // If already refreshing, wait for the current refresh to complete
+        console.log('Token refresh in progress, queueing request...');
         return new Promise((resolve, reject) => {
             refreshQueue.push({ resolve, reject });
         });
@@ -74,9 +99,11 @@ export async function handleTokenRefresh() {
 
     try {
         const newTokenData = await refreshAccessToken();
+        console.log('Processing queued refresh requests...');
         processQueue(null, newTokenData.access_token);
         return newTokenData;
     } catch (error) {
+        console.error('Token refresh failed, rejecting queued requests');
         processQueue(error, null);
         throw error;
     } finally {
@@ -98,7 +125,7 @@ export async function ensureValidToken() {
     const timeUntilExpiry = getTokenTimeUntilExpiry(currentToken);
     
     if (timeUntilExpiry <= 300) { // 5 minutes
-        console.log('Token will expire soon, refreshing...');
+        console.log(`Token expiring in ${timeUntilExpiry}s, refreshing now...`);
         return await handleTokenRefresh();
     }
 
@@ -123,14 +150,14 @@ export async function authenticatedFetch(url, options = {}) {
         };
         
         // Make the request with updated headers
-        const response = await fetch(url, {
+        let response = await fetch(url, {
             ...originalOptions,
             headers,
         });
         
         // If we get a 401, try to refresh and retry once
         if (response.status === 401) {
-            console.log('Received 401, attempting token refresh...');
+            console.warn('Got 401 Unauthorized, attempting token refresh...');
             
             try {
                 await handleTokenRefresh();
@@ -142,20 +169,24 @@ export async function authenticatedFetch(url, options = {}) {
                     'Authorization': `Bearer ${newToken}`,
                 };
                 
-                const retryResponse = await fetch(url, {
+                console.log('Retrying request with new token...');
+                response = await fetch(url, {
                     ...originalOptions,
                     headers: retryHeaders,
                 });
                 
-                if (!retryResponse.ok) {
-                    throw new Error(`Request failed after token refresh: ${retryResponse.status}`);
+                if (!response.ok) {
+                    console.error(`Request failed after refresh: ${response.status} ${response.statusText}`);
+                    throw new Error(`Request failed after token refresh: ${response.status}`);
                 }
                 
-                return retryResponse;
+                console.log('✅ Request succeeded after token refresh');
+                return response;
             } catch (refreshError) {
                 console.error('Token refresh failed during retry:', refreshError);
                 // If refresh fails, redirect to login
                 if (typeof window !== 'undefined') {
+                    console.log('Redirecting to login...');
                     window.location.href = '/auth/login';
                 }
                 throw refreshError;
@@ -163,18 +194,14 @@ export async function authenticatedFetch(url, options = {}) {
         }
         
         if (!response.ok) {
+            console.error(`Request failed: ${response.status} ${response.statusText}`);
             throw new Error(`Request failed: ${response.status} ${response.statusText}`);
         }
         
+        console.log(`Request succeeded: ${response.status}`);
         return response;
     } catch (error) {
-        console.error('Authenticated fetch failed:', error);
-        
-        // If it's a network error or other error (not 401), throw it
-        if (!error.message.includes('401')) {
-            throw error;
-        }
-        
+        console.error('Token refresh failed:', error?.message || error);
         throw error;
     }
 }

@@ -30,7 +30,6 @@ export default function LoginPage() {
         try {
             console.log('Attempting login with username:', email);
             const response = await authAPI.login(email, password);
-            console.log('Login response:', response);
             
             if (response.access_token) {
                 console.log('Login successful, redirecting...');

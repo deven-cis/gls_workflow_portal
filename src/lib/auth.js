@@ -68,6 +68,7 @@ export function logout() {
     window.localStorage.removeItem(AUTH_TOKEN_KEY);
     window.localStorage.removeItem(REFRESH_TOKEN_KEY);
     window.localStorage.removeItem(USER_KEY);
+    window.localStorage.removeItem('showAllHistory');
 }
 
 // JWT token decoding utility

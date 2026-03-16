@@ -1,9 +1,9 @@
 "use client";
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Menu, History, Settings, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getUserRole } from '@/lib/auth';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // Dynamic navigation URLs
 const NAV_URLS = {
@@ -12,16 +12,47 @@ const NAV_URLS = {
     SETTINGS: '/dashboard/settings',
 };
 
+const ADMIN_MODE_STORAGE_KEY = 'showAllHistory';
+
 export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
     const pathname = usePathname();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const userRole = getUserRole();
     const [showAllHistory, setShowAllHistory] = useState(false);
-    const isInterpreterLanguage = userRole === 'Interpreter - Language';
+    const [isHydrated, setIsHydrated] = useState(false);
+    const isStaff = userRole.includes('Staff:');
+
+    // Initialize from localStorage on mount
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const stored = localStorage.getItem(ADMIN_MODE_STORAGE_KEY) === 'true';
+            setShowAllHistory(stored);
+            setIsHydrated(true);
+        }
+    }, []);
+
+    // Sync showAllHistory state with URL admin parameter only when on History page
+    useEffect(() => {
+        if (!isHydrated || pathname !== NAV_URLS.HISTORY) return;
+        const adminParam = searchParams.get('admin') === 'true';
+        setShowAllHistory(adminParam);
+    }, [searchParams, pathname, isHydrated]);
 
     const handleToggleAllHistory = (newState) => {
         setShowAllHistory(newState);
-        const url = newState ? `${NAV_URLS.HISTORY}?admin=true` : NAV_URLS.HISTORY;
+        // Save to localStorage
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(ADMIN_MODE_STORAGE_KEY, newState ? 'true' : 'false');
+        }
+        // Preserve the current tab parameter when toggling admin mode
+        const params = new URLSearchParams(searchParams.toString());
+        if (newState) {
+            params.set('admin', 'true');
+        } else {
+            params.delete('admin');
+        }
+        const url = params.toString() ? `${NAV_URLS.HISTORY}?${params.toString()}` : NAV_URLS.HISTORY;
         router.push(url);
     };
     return (
@@ -78,7 +109,7 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
                     </Link>
 
                     <div className="flex items-center gap-2">
-                        <Link href={NAV_URLS.HISTORY} className="flex-1">
+                        <Link href={showAllHistory ? `${NAV_URLS.HISTORY}?admin=true` : NAV_URLS.HISTORY} className="flex-1">
                             <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors font-medium ${
                                 pathname === NAV_URLS.HISTORY
                                     ? 'text-red-800 bg-red-50' 
@@ -86,11 +117,11 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
                             }`}>
                                 <History className="w-5 h-5 flex-shrink-0" />
                                 {!isSidebarCollapsed && (
-                                    <span className="text-sm">{showAllHistory ? 'All History' : 'History'}</span>
+                                    <span className="text-sm">{showAllHistory && isStaff ? 'All History' : 'History'}</span>
                                 )}
                             </button>
                         </Link>
-                        {isInterpreterLanguage && !isSidebarCollapsed && (
+                        {isStaff && !isSidebarCollapsed && (
                             <div
                                 onClick={(e) => {
                                     e.preventDefault();
