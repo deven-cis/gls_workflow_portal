@@ -27,6 +27,9 @@ export default function WitnessManagement({
     onSaveWitness,
     onCancelWitness,
     handleCancelWitness,
+    savingWitnessIds,
+    loadingWitnessIds,
+    isLoadingWitnessData,
     toast,
     jobId
 }) {
@@ -215,6 +218,16 @@ export default function WitnessManagement({
     return (
         <div className="space-y-4 relative">
             {renderConfirmModal()}
+            
+            {isLoadingWitnessData && (
+                <div className="absolute inset-0 bg-white/50 backdrop-blur-sm rounded-lg flex items-center justify-center z-20">
+                    <div className="flex flex-col items-center gap-3">
+                        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        <span className="text-sm font-medium text-gray-700">Loading witness data...</span>
+                    </div>
+                </div>
+            )}
+            
             {addingWitness ? (
                 <div className="border border-blue-500 rounded-lg px-3 py-2 bg-white flex flex-col sm:flex-row sm:items-center gap-3">
                     <input
@@ -252,10 +265,30 @@ export default function WitnessManagement({
             {witnesses.length > 0 && (
                 <div className="space-y-3">
                     {witnesses.map((witness) => (
-                        <div key={witness.id} className="border border-gray-300 rounded-lg overflow-hidden bg-white">
+                        <div key={witness.id} className="border border-gray-300 rounded-lg overflow-hidden bg-white relative">
+                            {loadingWitnessIds?.has?.(witness.id) && (
+                                <div className="absolute inset-0 bg-black/5 flex items-center justify-center rounded-lg z-10 pointer-events-none">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                        <span className="text-xs font-medium text-gray-700">Loading videos...</span>
+                                    </div>
+                                </div>
+                            )}
+                            {savingWitnessIds?.has?.(witness.id) && (
+                                <div className="absolute inset-0 bg-black/5 flex items-center justify-center rounded-lg z-10 pointer-events-auto">
+                                    <div className="flex flex-col items-center gap-2">
+                                        <div className="w-6 h-6 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                        <span className="text-xs font-medium text-gray-700">Saving...</span>
+                                    </div>
+                                </div>
+                            )}
                             <div
-                                className="px-4 py-3 cursor-pointer flex items-center justify-between hover:bg-gray-50 transition-colors"
+                                className={`px-4 py-3 flex items-center justify-between transition-colors ${loadingWitnessIds?.has?.(witness.id) || savingWitnessIds?.has?.(witness.id) ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-gray-50'}`}
                                 onClick={(e) => {
+                                    // Don't allow expanding while loading or saving
+                                    if (loadingWitnessIds?.has?.(witness.id) || savingWitnessIds?.has?.(witness.id)) {
+                                        return;
+                                    }
                                     // Ignore clicks on buttons and interactive elements
                                     if (e.target.closest('button') || e.target.closest('a') || e.target.closest('input')) {
                                         return;
@@ -344,8 +377,16 @@ export default function WitnessManagement({
                                 </div>
                                 <div className="flex items-center gap-2">
                                     {(() => {
-                                        const uploadedCount = (witnessRecords[witness.id] || []).filter(r => r.video).length;
-                                        if (uploadedCount < 5) return null;
+                                        const allRecords = (witnessRecords[witness.id] || []);
+                                        const isProcessing = savingWitnessIds?.has?.(witness.id) || loadingWitnessIds?.has?.(witness.id);
+                                        
+                                        const videoRecords = allRecords.filter(r => r.video);
+                                        
+                                        const allVideosSaved = videoRecords.length === 5 && 
+                                            videoRecords.every(r => !!r.backendId && !r.video?.file);
+                                        
+                                        if (!allVideosSaved || isProcessing) return null;
+                                        
                                         return (
                                             <button
                                                 type="button"
@@ -372,7 +413,8 @@ export default function WitnessManagement({
                                             e.stopPropagation();
                                             toggleModal({ type: 'witness', witnessId: witness.id });
                                         }}
-                                        className="p-1.5 rounded-md border border-red-100 bg-red-50 hover:bg-red-100 transition-colors"
+                                        disabled={loadingWitnessIds?.has?.(witness.id) || savingWitnessIds?.has?.(witness.id)}
+                                        className="p-1.5 rounded-md border border-red-100 bg-red-50 hover:bg-red-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         aria-label="Delete witness"
                                     >
                                         <Trash2 className="w-4 h-4 text-red-600" />
@@ -386,11 +428,12 @@ export default function WitnessManagement({
                             </div>
 
                             {expandedWitness === witness.id && (
-                                <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-6">
+                                <div className={`border-t border-gray-200 p-4 bg-gray-50 space-y-6 ${savingWitnessIds?.has?.(witness.id) ? 'opacity-50 pointer-events-none' : ''}`}>
                                     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                                         <button
                                             type="button"
-                                            className="w-full grid grid-cols-[1fr_auto_1fr] items-center px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                                            disabled={savingWitnessIds?.has?.(witness.id)}
+                                            className="w-full grid grid-cols-[1fr_auto_1fr] items-center px-4 py-3 text-sm font-semibold text-gray-900 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                             onClick={() =>
                                                 setTemplateOpen((prev) => ({
                                                     ...prev,
@@ -461,7 +504,13 @@ export default function WitnessManagement({
                                                     <h5 className="text-sm font-semibold text-gray-900 truncate">
                                                         {witness.name} - Part {idx + 1}
                                                     </h5>
-                                                    {!!record?.video?.durationSeconds && (
+                                                    {/* Show special badge for large files with duration, otherwise show duration badge for small files */}
+                                                    {record?.video?.isLargeFile && !!record?.video?.durationSeconds ? (
+                                                        <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800 whitespace-nowrap">
+                                                            <Clock className="w-3 h-3 text-yellow-600" />
+                                                            {formatDuration(record.video.durationSeconds)}
+                                                        </span>
+                                                    ) : !!record?.video?.durationSeconds && (
                                                         <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 whitespace-nowrap">
                                                             <Clock className="w-3 h-3 text-gray-500" />
                                                             {formatDuration(record.video.durationSeconds)}
@@ -508,9 +557,12 @@ export default function WitnessManagement({
                                                         </div>
                                                         <div className="min-w-0">
                                                             <p className="text-sm font-medium text-gray-900 truncate">{record.video.name}</p>
-                                                            <p className="text-xs text-gray-500">
-                                                                {formatMB(record.video.size)} {record.video.uploadedAt ? `• ${formatDate(record.video.uploadedAt)}` : ''}
-                                                            </p>
+                                                            {/* Only show size for small files, not for large files */}
+                                                            {!record?.video?.isLargeFile && (
+                                                                <p className="text-xs text-gray-500">
+                                                                    {formatMB(record.video.size)} {record.video.uploadedAt ? `• ${formatDate(record.video.uploadedAt)}` : ''}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <button
@@ -553,8 +605,14 @@ export default function WitnessManagement({
                                         <AddActionButton
                                             label="Add Video"
                                             onClick={() => handleAddRecord(witness.id)}
-                                            disabled={(witnessRecords[witness.id] || []).length >= 5}
-                                            onDisabledClick={() => notifyError(`${witness.name}: You can add maximum 5 videos (no more than 5).`)}
+                                            disabled={(witnessRecords[witness.id] || []).length >= 5 || savingWitnessIds?.has?.(witness.id)}
+                                            onDisabledClick={() => {
+                                                if (savingWitnessIds?.has?.(witness.id)) {
+                                                    notifyError(`${witness.name}: Cannot add videos while saving.`);
+                                                } else {
+                                                    notifyError(`${witness.name}: You can add maximum 5 videos (no more than 5).`);
+                                                }
+                                            }}
                                         />
                                     </div>
 
@@ -569,7 +627,8 @@ export default function WitnessManagement({
                                                 collapseTemplate(witness.id);
                                                 handleCancelSingle(witness.id);
                                             }}
-                                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors"
+                                            disabled={savingWitnessIds?.has?.(witness.id)}
+                                            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             Cancel
                                         </button>
@@ -587,9 +646,17 @@ export default function WitnessManagement({
                                                     records: witnessRecords[witness.id] || []
                                                 });
                                             }}
-                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                                            disabled={savingWitnessIds?.has?.(witness.id)}
+                                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                         >
-                                            Save
+                                            {savingWitnessIds?.has?.(witness.id) ? (
+                                                <>
+                                                    <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                                                    Saving...
+                                                </>
+                                            ) : (
+                                                'Save'
+                                            )}
                                         </button>
                                     </div>
                                 </div>

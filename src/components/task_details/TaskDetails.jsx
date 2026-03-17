@@ -59,6 +59,9 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         witnessRecords,
         witnessTemplates,
         deletedWitnessVideoIds,
+        savingWitnessIds,
+        loadingWitnessIds,
+        isLoadingWitnessData,
         setAddingWitness,
         setNewWitnessName,
         setExpandedWitness,
@@ -581,6 +584,9 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleCancelWitness={handleCancelWitness}
                                                 handleUpdateTemplate={handleUpdateTemplate}
                                                 handleRenameWitness={handleRenameWitness}
+                                                savingWitnessIds={savingWitnessIds}
+                                                loadingWitnessIds={loadingWitnessIds}
+                                                isLoadingWitnessData={isLoadingWitnessData}
                                                 toast={toast}
                                                 onSaveWitness={handleSaveWitness}
                                                 jobId={selectedJobId || params?.id}

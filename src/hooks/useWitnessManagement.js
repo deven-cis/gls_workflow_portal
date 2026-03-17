@@ -11,6 +11,18 @@ import { witnessesAPI } from '@/services/witnesses_apis';
 export const useWitnessManagement = (witnessesData, toast) => {
     const params = useParams();
     const searchParams = useSearchParams();
+    
+    // Metadata cache to avoid re-fetching same video multiple times
+    const metadataCache = useCallback(() => {
+        if (typeof window === 'undefined') return {};
+        const cached = sessionStorage.getItem('witnessVideoMetadataCache');
+        return cached ? JSON.parse(cached) : {};
+    }, []);
+    
+    const saveMetadataCache = useCallback((cache) => {
+        if (typeof window === 'undefined') return;
+        sessionStorage.setItem('witnessVideoMetadataCache', JSON.stringify(cache));
+    }, []);
 
     // Witness state
     const [witnesses, setWitnesses] = useState([]);
@@ -20,10 +32,22 @@ export const useWitnessManagement = (witnessesData, toast) => {
     const [witnessRecords, setWitnessRecords] = useState({});
     const [witnessTemplates, setWitnessTemplates] = useState({});
     const [deletedWitnessVideoIds, setDeletedWitnessVideoIds] = useState({}); // witnessId -> number[]
+    const [savingWitnessIds, setSavingWitnessIds] = useState(new Set()); // Set of witness IDs currently being saved
+    const [loadingWitnessIds, setLoadingWitnessIds] = useState(new Set()); // Set of witness IDs currently loading videos
+    const [isLoadingWitnessData, setIsLoadingWitnessData] = useState(true); // Loading state for initial witness data fetch
 
     // Helper function to fetch video metadata (size and duration) from file path
     const fetchVideoMetadata = useCallback(async (filePath, fileName) => {
         if (!filePath || typeof window === 'undefined') return { size: null, durationSeconds: null };
+        
+        // Create cache key from file path
+        const cacheKey = `${filePath}:${fileName}`;
+        const cache = metadataCache();
+        
+        // Check cache first
+        if (cache[cacheKey]) {
+            return cache[cacheKey];
+        }
         
         try {
             // Construct full URL if filePath is relative
@@ -39,7 +63,30 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 headers['Authorization'] = `Bearer ${token}`;
             }
             
-            // Fetch video to get both size and duration
+            // Get file size from HEAD request (faster, no full download)
+            let size = null;
+            try {
+                const headResponse = await fetch(videoUrl, { 
+                    method: 'HEAD',
+                    headers,
+                    mode: 'cors',
+                    credentials: 'omit'
+                });
+                
+                if (headResponse.ok) {
+                    const contentLength = headResponse.headers.get('content-length');
+                    size = contentLength ? parseInt(contentLength, 10) : null;
+                    const sizeInGB = size ? size / (1024 * 1024 * 1024) : 0;
+                    
+                    // For large files (>500MB), we'll still try to extract duration but with a shorter timeout
+                    // Don't skip - continue to attempt duration extraction below
+                }
+            } catch (headError) {
+                console.warn(`HEAD request failed for ${videoUrl}:`, headError.message);
+                // Continue to GET request fallback
+            }
+            
+            // Fetch video file with authentication headers (for small files only)
             // Use mode: 'cors' to handle CORS issues, and catch network errors gracefully
             const videoResponse = await fetch(videoUrl, { 
                 headers,
@@ -52,11 +99,18 @@ export const useWitnessManagement = (witnessesData, toast) => {
             const isVideoContent = contentType.includes('video') || contentType.includes('application/octet-stream');
             if (!videoResponse.ok || !isVideoContent) {
                 console.warn(`Video fetch failed or returned non-video content: ${contentType} for ${videoUrl}`);
-                return { size: null, durationSeconds: null };
+                const result = { size, durationSeconds: null };
+                // Cache even failed responses to avoid repeated attempts
+                cache[cacheKey] = result;
+                saveMetadataCache(cache);
+                return result;
             }
             
-            const contentLength = videoResponse.headers.get('content-length');
-            const size = contentLength ? parseInt(contentLength, 10) : null;
+            // Get size from GET response if HEAD didn't provide it
+            if (!size) {
+                const contentLength = videoResponse.headers.get('content-length');
+                size = contentLength ? parseInt(contentLength, 10) : null;
+            }
             
             // Try to create blob - this might fail if response is not actually a video
             let blob;
@@ -64,7 +118,10 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 blob = await videoResponse.blob();
             } catch (blobError) {
                 console.warn(`Failed to create blob from video response: ${blobError.message} for ${videoUrl}`);
-                return { size, durationSeconds: null };
+                const result = { size, durationSeconds: null };
+                cache[cacheKey] = result;
+                saveMetadataCache(cache);
+                return result;
             }
             
             const url = URL.createObjectURL(blob);
@@ -72,27 +129,37 @@ export const useWitnessManagement = (witnessesData, toast) => {
             return new Promise((resolve) => {
                 const videoEl = document.createElement('video');
                 videoEl.preload = 'metadata';
+                let resolved = false;
                 
-                // Set timeout to prevent hanging if video never loads
-                const timeout = setTimeout(() => {
+                // Cleanup function to prevent multiple calls
+                const cleanup = (result) => {
+                    if (resolved) return;
+                    resolved = true;
+                    clearTimeout(timeout);
+                    videoEl.src = ''; // Clear src before revoking URL
                     URL.revokeObjectURL(url);
-                    resolve({ size, durationSeconds: null });
-                }, 10000); // 10 second timeout
+                    // Cache the result
+                    cache[cacheKey] = result;
+                    saveMetadataCache(cache);
+                    resolve(result);
+                };
+                
+                // FASTER timeout: 3 seconds instead of 10 for fail-fast behavior
+                const timeout = setTimeout(() => {
+                    cleanup({ size, durationSeconds: null });
+                }, 3000);
                 
                 videoEl.onloadedmetadata = () => {
-                    clearTimeout(timeout);
                     const durationSeconds = Number.isFinite(videoEl.duration) ? videoEl.duration : null;
-                    URL.revokeObjectURL(url);
-                    resolve({ size, durationSeconds });
+                    cleanup({ size, durationSeconds });
                 };
                 
                 videoEl.onerror = (e) => {
-                    clearTimeout(timeout);
                     console.warn(`Video element error for ${videoUrl}:`, e);
-                    URL.revokeObjectURL(url);
-                    resolve({ size, durationSeconds: null });
+                    cleanup({ size, durationSeconds: null });
                 };
                 
+                // Set src after all event listeners are attached
                 videoEl.src = url;
             });
         } catch (error) {
@@ -102,87 +169,138 @@ export const useWitnessManagement = (witnessesData, toast) => {
             } else {
                 console.warn('Failed to fetch video metadata:', error);
             }
-            return { size: null, durationSeconds: null };
+            const result = { size: null, durationSeconds: null };
+            // Cache even errors to avoid repeated failed attempts
+            cache[cacheKey] = result;
+            saveMetadataCache(cache);
+            return result;
         }
-    }, []);
+    }, [metadataCache, saveMetadataCache]);
 
-    // Seed witnesses from page data
+    // Seed witnesses from page data - maintain stable order across updates
     useEffect(() => {
         if (!Array.isArray(witnessesData)) return;
-        const mapped = witnessesData
-            .map((w) => ({
-                id: w.id ?? w.witness_id ?? w.uuid ?? Date.now() + Math.random(),
-                name: w.name ?? w.witness_name ?? w.full_name ?? 'Unnamed Witness',
-            }))
-            .filter((w) => w.id != null)
-            // Sort by ID descending (newest/highest ID first) so recently added witnesses appear at top
-            .sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
-        setWitnesses(mapped);
-        // Process videos and fetch metadata asynchronously
-        const processVideos = async () => {
-            const next = {};
-            for (const raw of witnessesData) {
-                const wid = raw.id ?? raw.witness_id ?? raw.uuid;
-                if (wid == null) continue;
-                const vids = raw.witness_vid ?? raw.witness_videos ?? raw.videos ?? [];
-                if (Array.isArray(vids) && vids.length) {
-                    const processedVideos = await Promise.all(
-                        vids.map(async (v, idx) => {
-                            const start = (v.start_time ?? v.startTime ?? '').toString();
-                            const end = (v.end_time ?? v.endTime ?? '').toString();
-                            const startTime = start ? start.slice(0, 5) : '';
-                            const endTime = end ? end.slice(0, 5) : '';
-                            const fileName = v.file_name ?? v.fileName ?? null;
-                            const filePath = v.file_path ?? v.filePath ?? null;
-                            
-                            // Fetch video metadata (size and duration) from file path
-                            let size = null;
-                            let durationSeconds = null;
-                            if (filePath && fileName) {
-                                const metadata = await fetchVideoMetadata(filePath, fileName);
-                                size = metadata.size;
-                                durationSeconds = metadata.durationSeconds;
-                            }
-                            
-                            return {
-                                id: v.id ?? `vid-${wid}-${idx}`,
-                                backendId: v.id,
-                                startTime,
-                                endTime,
-                                video: fileName
-                                    ? {
-                                          name: fileName,
-                                          filePath,
-                                          uploadedAt: v.entered_at ?? v.created_at ?? v.createdAt ?? null,
-                                          size,
-                                          durationSeconds,
-                                      }
-                                    : null,
-                            };
-                        })
-                    );
-                    next[wid] = processedVideos;
-                } else {
-                    // Ensure key exists for UI even when no videos yet
-                    if (!next[wid]) next[wid] = [];
-                }
-            }
-            // Also ensure mapped witnesses exist (in case raw list had missing ids)
-            for (const w of mapped) {
-                if (!next[w.id]) next[w.id] = [];
+        
+        setWitnesses((prevWitnesses) => {
+            const mapped = witnessesData
+                .map((w) => ({
+                    id: w.id ?? w.witness_id ?? w.uuid ?? Date.now() + Math.random(),
+                    name: w.name ?? w.witness_name ?? w.full_name ?? 'Unnamed Witness',
+                }))
+                .filter((w) => w.id != null);
+            
+            // If this is the first load, sort by ID descending (newest first)
+            if (!prevWitnesses || prevWitnesses.length === 0) {
+                return mapped.sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
             }
             
-            // Update state with processed videos
-            setWitnessRecords((prev) => ({ ...prev, ...next }));
+            // For subsequent updates, maintain existing order
+            // Update names for existing witnesses, keep order unchanged
+            // Add new witnesses to the top
+            const prevIds = new Set(prevWitnesses.map(w => w.id));
+            const newWitnesses = mapped.filter(w => !prevIds.has(w.id));
+            const updatedExisting = prevWitnesses.map(prev => {
+                const updated = mapped.find(m => m.id === prev.id);
+                return updated ? { ...prev, name: updated.name } : prev;
+            });
+            
+            // Return: new witnesses at top, then existing in their current order
+            return [...newWitnesses, ...updatedExisting];
+        });
+        // Initialize loading state with all witness IDs
+        const allWitnessIds = witnessesData.map(w => w.id ?? w.witness_id ?? w.uuid).filter(id => id != null);
+        setLoadingWitnessIds(new Set(allWitnessIds));
+        
+        // Process videos and fetch metadata asynchronously - PARALLEL processing for each witness
+        const processVideos = async () => {
+            // Process all witnesses in parallel (not sequential)
+            const witnessProcessingPromises = witnessesData.map(async (raw) => {
+                const wid = raw.id ?? raw.witness_id ?? raw.uuid;
+                if (wid == null) return;
+                
+                try {
+                    const vids = raw.witness_vid ?? raw.witness_videos ?? raw.videos ?? [];
+                    let processedVideos = [];
+                    
+                    if (Array.isArray(vids) && vids.length) {
+                        // Process videos for this witness
+                        processedVideos = await Promise.all(
+                            vids.map(async (v, idx) => {
+                                const start = (v.start_time ?? v.startTime ?? '').toString();
+                                const end = (v.end_time ?? v.endTime ?? '').toString();
+                                const startTime = start ? start.slice(0, 5) : '';
+                                const endTime = end ? end.slice(0, 5) : '';
+                                const fileName = v.file_name ?? v.fileName ?? null;
+                                const filePath = v.file_path ?? v.filePath ?? null;
+                                
+                                // Fetch video metadata (size and duration) from file path
+                                let size = null;
+                                let durationSeconds = null;
+                                if (filePath && fileName) {
+                                    const metadata = await fetchVideoMetadata(filePath, fileName);
+                                    size = metadata.size;
+                                    durationSeconds = metadata.durationSeconds;
+                                }
+                                
+                                return {
+                                    id: v.id ?? `vid-${wid}-${idx}`,
+                                    backendId: v.id,
+                                    startTime,
+                                    endTime,
+                                    video: fileName
+                                        ? {
+                                              name: fileName,
+                                              filePath,
+                                              uploadedAt: v.entered_at ?? v.created_at ?? v.createdAt ?? null,
+                                              size,
+                                              durationSeconds,
+                                          }
+                                        : null,
+                                };
+                            })
+                        );
+                    }
+                    
+                    // Update records for this witness
+                    setWitnessRecords((prev) => ({
+                        ...prev,
+                        [wid]: processedVideos,
+                    }));
+                } catch (error) {
+                    console.error(`Error processing witness ${wid}:`, error);
+                    // Ensure empty array on error
+                    setWitnessRecords((prev) => ({
+                        ...prev,
+                        [wid]: [],
+                    }));
+                } finally {
+                    // ALWAYS mark this witness as done loading (success or error)
+                    setLoadingWitnessIds((prev) => {
+                        const newSet = new Set(prev);
+                        newSet.delete(wid);
+                        return newSet;
+                    });
+                }
+            });
+            
+            // Wait for all witnesses to finish processing
+            await Promise.all(witnessProcessingPromises);
         };
         
-        processVideos();
+        processVideos().then(() => {
+            // Data loading complete
+            setIsLoadingWitnessData(false);
+        });
         setWitnessTemplates((prev) => {
             const next = { ...prev };
             // Build a name->id map in case API items lack an id field
             const byName = new Map(
-                mapped
-                    .filter((m) => m?.name)
+                witnessesData
+                    .map(w => ({
+                        id: w.id ?? w.witness_id ?? w.uuid,
+                        name: w.name ?? w.witness_name ?? w.full_name,
+                    }))
+                    .filter((m) => m?.name && m?.id)
                     .map((m) => [(m.name || '').toLowerCase(), m.id])
             );
             for (const raw of witnessesData) {
@@ -453,19 +571,37 @@ export const useWitnessManagement = (witnessesData, toast) => {
             const url = URL.createObjectURL(file);
             const videoEl = document.createElement('video');
             videoEl.preload = 'metadata';
+            let resolved = false;
+            
+            // Cleanup function to prevent multiple cleanup calls
+            const cleanup = () => {
+                if (resolved) return;
+                resolved = true;
+                clearTimeout(timeout);
+                videoEl.src = ''; // Clear src before revoking URL
+                URL.revokeObjectURL(url);
+            };
+            
+            // FASTER timeout for local files: 2 seconds
+            const timeout = setTimeout(() => {
+                cleanup();
+            }, 2000);
+            
             videoEl.onloadedmetadata = () => {
                 const seconds = Number.isFinite(videoEl.duration) ? videoEl.duration : null;
-                URL.revokeObjectURL(url);
                 if (seconds && seconds > 0) {
                     handleUpdateRecord(witnessId, recordId, 'video', { ...baseVideo, durationSeconds: seconds });
                 }
+                cleanup();
             };
             videoEl.onerror = () => {
-                URL.revokeObjectURL(url);
+                cleanup();
             };
+            
+            // Set src after all event listeners are attached
             videoEl.src = url;
         } catch (e) {
-            // ignore duration extraction failures
+            console.warn('Failed to extract video duration:', e);
         }
     }, [handleUpdateRecord, toast]);
 
@@ -501,6 +637,9 @@ export const useWitnessManagement = (witnessesData, toast) => {
 
     // Handle save witness
     const handleSaveWitness = useCallback(async (witnessId, { template, records } = {}) => {
+        // Set loading state for this witness
+        setSavingWitnessIds((prev) => new Set([...prev, witnessId]));
+        
         try {
             const jobIdParam = searchParams.get('jobId');
             const jobId = Number(jobIdParam ?? params?.id);
@@ -668,42 +807,36 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 if (raw) {
                     // Backend returns witness_videos (serialization alias) from WitnessSchema
                     const vids = raw.witness_videos ?? raw.witness_vid ?? raw.videos ?? [];
-                    // Process videos and fetch metadata
-                    const processedVideos = await Promise.all(
-                        (Array.isArray(vids) ? vids : []).map(async (v, idx) => {
-                            const start = (v.start_time ?? v.startTime ?? '').toString();
-                            const end = (v.end_time ?? v.endTime ?? '').toString();
-                            const startTime = start ? start.slice(0, 5) : '';
-                            const endTime = end ? end.slice(0, 5) : '';
-                            const fileName = v.file_name ?? v.fileName ?? null;
-                            const filePath = v.file_path ?? v.filePath ?? null;
-                            
-                            // Fetch video metadata (size and duration) from file path
-                            let size = null;
-                            let durationSeconds = null;
-                            if (filePath && fileName) {
-                                const metadata = await fetchVideoMetadata(filePath, fileName);
-                                size = metadata.size;
-                                durationSeconds = metadata.durationSeconds;
-                            }
-                            
-                            return {
-                                id: v.id ?? `vid-${witnessId}-${idx}`,
-                                backendId: v.id,
-                                startTime,
-                                endTime,
-                                video: fileName
-                                    ? {
-                                          name: fileName,
-                                          filePath,
-                                          uploadedAt: v.entered_at ?? v.created_at ?? v.createdAt ?? null,
-                                          size,
-                                          durationSeconds,
-                                      }
-                                    : null,
-                            };
-                        })
-                    );
+                    // Process videos without fetching metadata (backend files already have data)
+                    const processedVideos = (Array.isArray(vids) ? vids : []).map((v, idx) => {
+                        const start = (v.start_time ?? v.startTime ?? '').toString();
+                        const end = (v.end_time ?? v.endTime ?? '').toString();
+                        const startTime = start ? start.slice(0, 5) : '';
+                        const endTime = end ? end.slice(0, 5) : '';
+                        const fileName = v.file_name ?? v.fileName ?? null;
+                        const filePath = v.file_path ?? v.filePath ?? null;
+                        
+                        // For backend videos, don't fetch metadata - it's already stored on the server
+                        // Only newly uploaded local files have duration extracted before save
+                        const size = v.file_size ?? v.size ?? null;
+                        const durationSeconds = v.duration_seconds ?? v.durationSeconds ?? null;
+                        
+                        return {
+                            id: v.id ?? `vid-${witnessId}-${idx}`,
+                            backendId: v.id,
+                            startTime,
+                            endTime,
+                            video: fileName
+                                ? {
+                                      name: fileName,
+                                      filePath,
+                                      uploadedAt: v.entered_at ?? v.created_at ?? v.createdAt ?? null,
+                                      size,
+                                      durationSeconds,
+                                  }
+                                : null,
+                        };
+                    });
                     
                     setWitnessRecords((prev) => {
                         const next = { ...prev };
@@ -769,13 +902,24 @@ export const useWitnessManagement = (witnessesData, toast) => {
                                 }
                             }
                             
-                            // If matched, preserve _originalVideo and _originalBackendId
-                            if (existing && (existing._originalVideo || existing._originalBackendId)) {
-                                return {
+                            // If matched, preserve locally extracted duration and size
+                            if (existing) {
+                                const result = {
                                     ...pv,
                                     _originalVideo: existing._originalVideo,
                                     _originalBackendId: existing._originalBackendId,
                                 };
+                                // Preserve locally extracted duration and size if backend doesn't have them
+                                if (existing.video && pv.video) {
+                                    if (!pv.video.durationSeconds && existing.video.durationSeconds) {
+                                        pv.video.durationSeconds = existing.video.durationSeconds;
+                                    }
+                                    if (!pv.video.size && existing.video.size) {
+                                        pv.video.size = existing.video.size;
+                                    }
+                                }
+                                result.video = pv.video;
+                                return result;
                             }
                             
                             // Return the processed video as-is (new video or unmatched)
@@ -795,6 +939,13 @@ export const useWitnessManagement = (witnessesData, toast) => {
         } catch (err) {
             console.error('Failed to save witness/videos:', err);
             toast.error(err?.message || 'Failed to save witness/videos');
+        } finally {
+            // Clear loading state for this witness
+            setSavingWitnessIds((prev) => {
+                const next = new Set(prev);
+                next.delete(witnessId);
+                return next;
+            });
         }
     }, [witnesses, deletedWitnessVideoIds, searchParams, params, toast, fetchVideoMetadata]);
 
@@ -807,6 +958,9 @@ export const useWitnessManagement = (witnessesData, toast) => {
         witnessRecords,
         witnessTemplates,
         deletedWitnessVideoIds,
+        savingWitnessIds,
+        loadingWitnessIds,
+        isLoadingWitnessData,
         
         // Setters
         setAddingWitness,
