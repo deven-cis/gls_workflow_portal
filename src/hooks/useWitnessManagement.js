@@ -264,7 +264,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
                     // Update records for this witness
                     setWitnessRecords((prev) => ({
                         ...prev,
-                        [wid]: processedVideos,
+                        [wid]: processedVideos.sort((a, b) => (a.id || 0) - (b.id || 0)),
                     }));
                 } catch (error) {
                     console.error(`Error processing witness ${wid}:`, error);
@@ -512,7 +512,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
             ...prev,
             [witnessId]: (prev[witnessId] || []).map((r) =>
                 r.id === recordId ? { ...r, [field]: value } : r
-            )
+            ).sort((a, b) => (a.id || 0) - (b.id || 0))
         }));
     }, []);
 
@@ -926,9 +926,10 @@ export const useWitnessManagement = (witnessesData, toast) => {
                             return pv;
                         });
                         
-                        // Preserve order: use mergedVideos from backend, but maintain existing order where possible
-                        // The backend returns videos in a consistent order, so we use that
-                        next[witnessId] = mergedVideos;
+                        const sortedVideos = mergedVideos.sort((a, b) => (a.id || 0) - (b.id || 0));
+                        
+                        // Preserve order: use sorted videos
+                        next[witnessId] = sortedVideos;
                         return next;
                     });
                 }
