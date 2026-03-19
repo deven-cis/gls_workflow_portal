@@ -231,6 +231,16 @@ export const galloInstance = async (endpoint, options = {}) => {
       // return parsed JSON when possible, otherwise raw text
       return typeof body === 'string' && !contentType.includes('application/json') ? { data: body } : body;
     } catch (error) {
+      if (error?.name === 'AbortError') {
+        return {
+          success: false,
+          status_code: 499,
+          message: error?.message || 'Request aborted',
+          result: null,
+          error,
+        };
+      }
+
       // Log all errors to console only (no error overlay)
       console.error(`API Call Failed: ${endpoint}`, error);
       

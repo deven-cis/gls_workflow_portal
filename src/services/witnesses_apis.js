@@ -3,6 +3,16 @@ import { downloadFile, extractFileExtension } from '@/lib/utils';
 import { API_BASE_URL } from '@/lib/config';
 import { endpoints } from '@/constants/endpoints';
 export const witnessesAPI = {
+    _throwIfAborted: (response) => {
+        const error = response?.error;
+        const message = response?.message || error?.message || '';
+        if (error?.name === 'AbortError' || /aborted/i.test(message)) {
+            const abortError = new Error(message || 'Request aborted');
+            abortError.name = 'AbortError';
+            throw abortError;
+        }
+    },
+
     getWitness: async (witnessId) => {
         const response = await galloInstance(endpoints.witnesses.get(witnessId));
         // Backend returns: { status_code, message, success, result }
@@ -110,7 +120,7 @@ export const witnessesAPI = {
         return response?.result ?? response;
     },
 
-    uploadWitnessVideoChunk: async ({ uploadId, chunkNumber, totalChunks, chunk, fileName }) => {
+    uploadWitnessVideoChunk: async ({ uploadId, chunkNumber, totalChunks, chunk, fileName, signal }) => {
         const formData = new FormData();
         formData.append('upload_id', uploadId);
         formData.append('chunk_number', String(chunkNumber));
@@ -121,9 +131,11 @@ export const witnessesAPI = {
             method: 'POST',
             body: formData,
             headers: { 'Content-Type': undefined },
+            signal,
         });
 
         if (response && response.success === false) {
+            witnessesAPI._throwIfAborted(response);
             throw new Error(response?.message || 'Failed to upload video chunk');
         }
         return response?.result ?? response;
@@ -141,7 +153,20 @@ export const witnessesAPI = {
         return response?.result ?? response;
     },
 
-    uploadVideoInChunks: async (file, { onProgress } = {}) => {
+    cancelWitnessVideoUpload: async ({ uploadId }) => {
+        if (!uploadId) return null;
+        const response = await galloInstance(endpoints.witnesses.uploadCancel(), {
+            method: 'POST',
+            body: JSON.stringify({ upload_id: uploadId }),
+        });
+
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to cancel video upload');
+        }
+        return response?.result ?? response;
+    },
+
+    uploadVideoInChunks: async (file, { onProgress, onInitialized, signal } = {}) => {
         const chunkSize = 50 * 1024 * 1024;
         const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
 
@@ -156,6 +181,9 @@ export const witnessesAPI = {
         if (!uploadId) {
             throw new Error('Upload ID was not returned by the server');
         }
+        if (typeof onInitialized === 'function') {
+            onInitialized(uploadId);
+        }
 
         for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber += 1) {
             const start = chunkNumber * chunkSize;
@@ -168,6 +196,7 @@ export const witnessesAPI = {
                 totalChunks,
                 chunk,
                 fileName: file.name,
+                signal,
             });
 
             const progress = Math.round(((chunkNumber + 1) / totalChunks) * 100);

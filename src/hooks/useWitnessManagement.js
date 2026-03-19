@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { witnessesAPI } from '@/services/witnesses_apis';
 
@@ -11,6 +11,14 @@ import { witnessesAPI } from '@/services/witnesses_apis';
 export const useWitnessManagement = (witnessesData, toast) => {
     const params = useParams();
     const searchParams = useSearchParams();
+    const uploadControllersRef = useRef(new Map());
+
+    const cancelUploadSession = useCallback((uploadId) => {
+        if (!uploadId) return;
+        witnessesAPI.cancelWitnessVideoUpload({ uploadId }).catch((error) => {
+            console.warn('Failed to cancel witness video upload on backend:', error);
+        });
+    }, []);
 
     const extractLocalVideoDuration = useCallback(async (file) => {
         if (typeof window === 'undefined' || !file) return null;
@@ -390,7 +398,19 @@ export const useWitnessManagement = (witnessesData, toast) => {
             const records = witnessRecords[witnessId] || [];
             const record = records.find((r) => r.id === recordId);
             if (record?.video?.uploadStatus === 'uploading') {
-                toast.error('Please wait for the upload to finish before removing this video.');
+                const uploadKey = `${witnessId}:${recordId}`;
+                const uploadState = uploadControllersRef.current.get(uploadKey);
+                if (uploadState?.controller) {
+                    uploadState.controller.abort();
+                    cancelUploadSession(uploadState.uploadId);
+                    uploadControllersRef.current.delete(uploadKey);
+                }
+                setWitnessRecords((prev) => ({
+                    ...prev,
+                    [witnessId]: (prev[witnessId] || []).map((r) =>
+                        r.id === recordId ? { ...r, video: null } : r
+                    ),
+                }));
                 return;
             }
 
@@ -425,6 +445,10 @@ export const useWitnessManagement = (witnessesData, toast) => {
             uploadProgress: 0,
         };
 
+        const uploadKey = `${witnessId}:${recordId}`;
+        const controller = new AbortController();
+        uploadControllersRef.current.set(uploadKey, { controller, uploadId: null });
+
         handleUpdateRecord(witnessId, recordId, 'video', baseVideo);
 
         try {
@@ -436,6 +460,12 @@ export const useWitnessManagement = (witnessesData, toast) => {
             handleUpdateRecord(witnessId, recordId, 'video', previewVideo);
 
             const uploaded = await witnessesAPI.uploadVideoInChunks(file, {
+                signal: controller.signal,
+                onInitialized: (uploadId) => {
+                    const current = uploadControllersRef.current.get(uploadKey);
+                    if (!current) return;
+                    uploadControllersRef.current.set(uploadKey, { ...current, uploadId });
+                },
                 onProgress: (progress) => {
                     handleUpdateRecord(witnessId, recordId, 'video', {
                         ...previewVideo,
@@ -456,7 +486,12 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 uploadProgress: 100,
                 uploadToken: uploaded?.upload_id ?? null,
             });
+            uploadControllersRef.current.delete(uploadKey);
         } catch (e) {
+            if (e?.name === 'AbortError') {
+                uploadControllersRef.current.delete(uploadKey);
+                return;
+            }
             console.error('Failed to upload witness video:', e);
             handleUpdateRecord(witnessId, recordId, 'video', {
                 ...baseVideo,
@@ -464,6 +499,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 uploadProgress: 0,
                 uploadError: e?.message || 'Upload failed',
             });
+            uploadControllersRef.current.delete(uploadKey);
             toast.error(e?.message || 'Failed to upload video');
         }
     }, [extractLocalVideoDuration, handleUpdateRecord, toast, witnessRecords]);
@@ -472,8 +508,13 @@ export const useWitnessManagement = (witnessesData, toast) => {
     const handleDeleteRecord = useCallback((witnessId, recordId) => {
         const record = (witnessRecords[witnessId] || []).find((r) => r.id === recordId);
         if (record?.video?.uploadStatus === 'uploading') {
-            toast.error('Please wait for the upload to finish before deleting this record.');
-            return;
+            const uploadKey = `${witnessId}:${recordId}`;
+            const uploadState = uploadControllersRef.current.get(uploadKey);
+            if (uploadState?.controller) {
+                uploadState.controller.abort();
+                cancelUploadSession(uploadState.uploadId);
+                uploadControllersRef.current.delete(uploadKey);
+            }
         }
 
         setWitnessRecords((prev) => {
@@ -489,7 +530,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 [witnessId]: (prev[witnessId] || []).filter((r) => r.id !== recordId),
             };
         });
-    }, [toast, witnessRecords]);
+    }, [cancelUploadSession, toast, witnessRecords]);
 
     // Handle update template
     const handleUpdateTemplate = useCallback((witnessId, field, value) => {
