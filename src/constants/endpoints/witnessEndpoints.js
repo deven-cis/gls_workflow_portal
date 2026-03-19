@@ -7,8 +7,10 @@ export const witnessEndpoints = {
   delete: (witnessId) => `/witnesses/delete/${witnessId}`,
   updateName: (witnessId) => `/witnesses/name/${witnessId}`,
   saveAll: () => '/witnesses/save-all',
+  uploadInit: () => '/witnesses/uploads/init',
+  uploadChunk: () => '/witnesses/uploads/chunk',
+  uploadComplete: () => '/witnesses/uploads/complete',
   downloadCompleteVideo: (jobNo, witnessId) =>
     `/witnesses/${jobNo}/download_witnesses_complete_video?witness_id=${witnessId}&download_all=true`,
 };
-
 

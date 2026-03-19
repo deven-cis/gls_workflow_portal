@@ -93,6 +93,92 @@ export const witnessesAPI = {
         return response?.result ?? response;
     },
 
+    initWitnessVideoUpload: async ({ fileName, fileSize, contentType, totalChunks }) => {
+        const response = await galloInstance(endpoints.witnesses.uploadInit(), {
+            method: 'POST',
+            body: JSON.stringify({
+                file_name: fileName,
+                file_size: fileSize,
+                content_type: contentType,
+                total_chunks: totalChunks,
+            }),
+        });
+
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to initialize video upload');
+        }
+        return response?.result ?? response;
+    },
+
+    uploadWitnessVideoChunk: async ({ uploadId, chunkNumber, totalChunks, chunk, fileName }) => {
+        const formData = new FormData();
+        formData.append('upload_id', uploadId);
+        formData.append('chunk_number', String(chunkNumber));
+        formData.append('total_chunks', String(totalChunks));
+        formData.append('file', chunk, fileName);
+
+        const response = await galloInstance(endpoints.witnesses.uploadChunk(), {
+            method: 'POST',
+            body: formData,
+            headers: { 'Content-Type': undefined },
+        });
+
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to upload video chunk');
+        }
+        return response?.result ?? response;
+    },
+
+    completeWitnessVideoUpload: async ({ uploadId }) => {
+        const response = await galloInstance(endpoints.witnesses.uploadComplete(), {
+            method: 'POST',
+            body: JSON.stringify({ upload_id: uploadId }),
+        });
+
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to complete video upload');
+        }
+        return response?.result ?? response;
+    },
+
+    uploadVideoInChunks: async (file, { onProgress } = {}) => {
+        const chunkSize = 50 * 1024 * 1024;
+        const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+
+        const init = await witnessesAPI.initWitnessVideoUpload({
+            fileName: file.name,
+            fileSize: file.size,
+            contentType: file.type,
+            totalChunks,
+        });
+
+        const uploadId = init?.upload_id;
+        if (!uploadId) {
+            throw new Error('Upload ID was not returned by the server');
+        }
+
+        for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber += 1) {
+            const start = chunkNumber * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const chunk = file.slice(start, end);
+
+            await witnessesAPI.uploadWitnessVideoChunk({
+                uploadId,
+                chunkNumber,
+                totalChunks,
+                chunk,
+                fileName: file.name,
+            });
+
+            const progress = Math.round(((chunkNumber + 1) / totalChunks) * 100);
+            if (typeof onProgress === 'function') {
+                onProgress(progress);
+            }
+        }
+
+        return witnessesAPI.completeWitnessVideoUpload({ uploadId });
+    },
+
     /**
      * Download complete merged video for a specific witness
      * Backend endpoint: GET /witnesses/{job_no}/download_witnesses_complete_video?witness_id={witness_id}&download_all=true

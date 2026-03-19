@@ -43,8 +43,6 @@ export default function WitnessManagement({
     const handleCancelSingle = onCancelWitness || (() => {});
     
 
-    console.log("witnessRecords------", witnessRecords)
-
     const handleDownloadCompleteVideo = async (e, witnessId, witnessName) => {
         e.preventDefault();
         e.stopPropagation();
@@ -136,6 +134,16 @@ export default function WitnessManagement({
             const startTime = (r.startTime ?? '').toString().trim();
             const endTime = (r.endTime ?? '').toString().trim();
             const hasTimes = !!(startTime && endTime && startTime !== '--:--' && endTime !== '--:--');
+
+            if (r?.video?.uploadStatus === 'uploading') {
+                notifyError(`${partLabel}: video is still uploading`);
+                return false;
+            }
+
+            if (r?.video?.uploadStatus === 'failed') {
+                notifyError(`${partLabel}: video upload failed. Please upload again.`);
+                return false;
+            }
             
             // If record has no video and no times, it's an empty record - prevent saving
             if (!hasVideo && !hasTimes) {
@@ -497,7 +505,7 @@ export default function WitnessManagement({
                                         )}
                                     </div>
 
-                                    {witnessRecords[witness.id]?.map((record, idx) => (
+                    {witnessRecords[witness.id]?.map((record, idx) => (
                                         <div key={record.id} className="bg-white p-4 rounded-lg border border-gray-200">
                                             <div className="flex items-center justify-between mb-4">
                                                 <div className="flex items-center gap-2 min-w-0">
@@ -563,6 +571,24 @@ export default function WitnessManagement({
                                                                     {formatMB(record.video.size)} {record.video.uploadedAt ? `• ${formatDate(record.video.uploadedAt)}` : ''}
                                                                 </p>
                                                             )}
+                                                            {record?.video?.uploadStatus === 'uploading' && (
+                                                                <div className="mt-2 space-y-1">
+                                                                    <p className="text-xs font-medium text-blue-600">
+                                                                        Uploading... {record.video.uploadProgress ?? 0}%
+                                                                    </p>
+                                                                    <div className="h-1.5 w-40 rounded-full bg-blue-100">
+                                                                        <div
+                                                                            className="h-1.5 rounded-full bg-blue-600 transition-all"
+                                                                            style={{ width: `${record.video.uploadProgress ?? 0}%` }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            {record?.video?.uploadStatus === 'failed' && (
+                                                                <p className="mt-2 text-xs font-medium text-red-600">
+                                                                    {record.video.uploadError || 'Upload failed'}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <button
@@ -584,14 +610,14 @@ export default function WitnessManagement({
                                                         </div>
                                                         <div>
                                                             <p className="text-sm font-medium text-gray-700">Upload Video</p>
-                                                        <p className="text-xs text-gray-500">MPEG, MP4, or MKV formats.</p>
+                                                        <p className="text-xs text-gray-500">MP4, MKV, MPEG, MPG, AVI.</p>
                                                         </div>
                                                     </div>
                                                     <label className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 cursor-pointer">
                                                         Upload
                                                         <input
                                                             type="file"
-                                                            accept="video/mpeg,video/mp4,video/x-matroska,.mp4,.mpeg,.mpg,.mkv"
+                                                            accept="video/*,.mp4,.mkv,.mpeg,.mpg,.avi,.mov,.wmv,.flv,.webm,.m4v,.3gp"
                                                             className="hidden"
                                                             onChange={(e) => handleUploadVideo(witness.id, record.id, e.target.files?.[0])}
                                                         />
@@ -646,7 +672,10 @@ export default function WitnessManagement({
                                                     records: witnessRecords[witness.id] || []
                                                 });
                                             }}
-                                            disabled={savingWitnessIds?.has?.(witness.id)}
+                                            disabled={
+                                                savingWitnessIds?.has?.(witness.id) ||
+                                                (witnessRecords[witness.id] || []).some((record) => record?.video?.uploadStatus === 'uploading')
+                                            }
                                             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                         >
                                             {savingWitnessIds?.has?.(witness.id) ? (
