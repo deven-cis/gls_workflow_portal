@@ -153,6 +153,32 @@ export const witnessesAPI = {
         return response?.result ?? response;
     },
 
+    pauseWitnessVideoUpload: async ({ uploadId }) => {
+        if (!uploadId) return null;
+        const response = await galloInstance(endpoints.witnesses.uploadPause(), {
+            method: 'POST',
+            body: JSON.stringify({ upload_id: uploadId }),
+        });
+
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to pause video upload');
+        }
+        return response?.result ?? response;
+    },
+
+    resumeWitnessVideoUpload: async ({ uploadId }) => {
+        if (!uploadId) return null;
+        const response = await galloInstance(endpoints.witnesses.uploadResume(), {
+            method: 'POST',
+            body: JSON.stringify({ upload_id: uploadId }),
+        });
+
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to resume video upload');
+        }
+        return response?.result ?? response;
+    },
+
     cancelWitnessVideoUpload: async ({ uploadId }) => {
         if (!uploadId) return null;
         const response = await galloInstance(endpoints.witnesses.uploadCancel(), {
@@ -166,18 +192,21 @@ export const witnessesAPI = {
         return response?.result ?? response;
     },
 
-    uploadVideoInChunks: async (file, { onProgress, onInitialized, signal } = {}) => {
+    uploadVideoInChunks: async (file, { onProgress, onInitialized, onChunkUploaded, signal, uploadId: existingUploadId = null, startChunk = 0, totalChunks: providedTotalChunks = null } = {}) => {
         const chunkSize = 50 * 1024 * 1024;
-        const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+        const totalChunks = providedTotalChunks ?? Math.max(1, Math.ceil(file.size / chunkSize));
 
-        const init = await witnessesAPI.initWitnessVideoUpload({
-            fileName: file.name,
-            fileSize: file.size,
-            contentType: file.type,
-            totalChunks,
-        });
+        let uploadId = existingUploadId;
+        if (!uploadId) {
+            const init = await witnessesAPI.initWitnessVideoUpload({
+                fileName: file.name,
+                fileSize: file.size,
+                contentType: file.type,
+                totalChunks,
+            });
+            uploadId = init?.upload_id;
+        }
 
-        const uploadId = init?.upload_id;
         if (!uploadId) {
             throw new Error('Upload ID was not returned by the server');
         }
@@ -185,12 +214,12 @@ export const witnessesAPI = {
             onInitialized(uploadId);
         }
 
-        for (let chunkNumber = 0; chunkNumber < totalChunks; chunkNumber += 1) {
+        for (let chunkNumber = startChunk; chunkNumber < totalChunks; chunkNumber += 1) {
             const start = chunkNumber * chunkSize;
             const end = Math.min(start + chunkSize, file.size);
             const chunk = file.slice(start, end);
 
-            await witnessesAPI.uploadWitnessVideoChunk({
+            const chunkResult = await witnessesAPI.uploadWitnessVideoChunk({
                 uploadId,
                 chunkNumber,
                 totalChunks,
@@ -199,7 +228,13 @@ export const witnessesAPI = {
                 signal,
             });
 
-            const progress = Math.round(((chunkNumber + 1) / totalChunks) * 100);
+            if (typeof onChunkUploaded === 'function') {
+                onChunkUploaded(chunkResult);
+            }
+
+            const receivedChunks = chunkResult?.received_chunks ?? (chunkNumber + 1);
+            const total = chunkResult?.total_chunks ?? totalChunks;
+            const progress = Math.round((receivedChunks / total) * 100);
             if (typeof onProgress === 'function') {
                 onProgress(progress);
             }

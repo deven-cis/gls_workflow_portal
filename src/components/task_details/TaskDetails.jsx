@@ -72,6 +72,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         handleUpdateRecord,
         handleUploadVideo,
         handleDeleteRecord,
+        handlePauseUploadingVideo,
+        handleResumeUploadingVideo,
         handleUpdateTemplate,
         handleSaveWitness,
         handleCancelWitness
@@ -581,6 +583,8 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
                                                 handleUpdateRecord={handleUpdateRecord}
                                                 handleUploadVideo={handleUploadVideo}
                                                 handleDeleteRecord={handleDeleteRecord}
+                                                handlePauseUploadingVideo={handlePauseUploadingVideo}
+                                                handleResumeUploadingVideo={handleResumeUploadingVideo}
                                                 handleCancelWitness={handleCancelWitness}
                                                 handleUpdateTemplate={handleUpdateTemplate}
                                                 handleRenameWitness={handleRenameWitness}
@@ -702,4 +706,3 @@ export default function TaskDetails({ caseId, caseInfo, witnessesData}) {
         </>
     );
 }
-

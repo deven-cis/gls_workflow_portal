@@ -20,6 +20,8 @@ export default function WitnessManagement({
     handleUpdateRecord,
     handleUploadVideo,
     handleDeleteRecord,
+    handlePauseUploadingVideo,
+    handleResumeUploadingVideo,
     handleUpdateTemplate,
     handleRenameWitness,
     onSaveWitnesses,
@@ -34,7 +36,7 @@ export default function WitnessManagement({
     jobId
 }) {
     const [pendingRename, setPendingRename] = useState({});
-    const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record', witnessId, recordId }
+    const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record'|'upload-video', witnessId, recordId }
     const [templateOpen, setTemplateOpen] = useState({});
     const [downloadingCompleteVideo, setDownloadingCompleteVideo] = useState({}); // Track downloading state per witness: { witnessId: boolean }
     const handleCancel = onCancelWitnesses || (() => {});
@@ -135,7 +137,7 @@ export default function WitnessManagement({
             const endTime = (r.endTime ?? '').toString().trim();
             const hasTimes = !!(startTime && endTime && startTime !== '--:--' && endTime !== '--:--');
 
-            if (r?.video?.uploadStatus === 'uploading') {
+            if (r?.video?.uploadStatus === 'uploading' || r?.video?.uploadStatus === 'paused') {
                 notifyError(`${partLabel}: video is still uploading`);
                 return false;
             }
@@ -177,6 +179,8 @@ export default function WitnessManagement({
         if (!confirmModal) return;
         if (confirmModal.type === 'witness') {
             await handleDeleteWitness(confirmModal.witnessId);
+        } else if (confirmModal.type === 'upload-video') {
+            await handleUploadVideo(confirmModal.witnessId, confirmModal.recordId, null);
         } else if (confirmModal.type === 'record') {
             handleDeleteRecord(confirmModal.witnessId, confirmModal.recordId);
         }
@@ -186,6 +190,7 @@ export default function WitnessManagement({
     const renderConfirmModal = () => {
         if (!confirmModal) return null;
         const isWitness = confirmModal.type === 'witness';
+        const isUploadVideo = confirmModal.type === 'upload-video';
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                 <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-5 space-y-4">
@@ -195,27 +200,35 @@ export default function WitnessManagement({
                         </div>
                         <div>
                             <h4 className="text-base font-semibold text-gray-900">
-                                {isWitness ? 'Delete Witness?' : 'Delete Recording?'}
+                                {isWitness ? 'Delete Witness?' : isUploadVideo ? 'Stop Upload?' : 'Delete Recording?'}
                             </h4>
                             <p className="text-sm text-gray-600">
                                 {isWitness
                                     ? 'You want to delete this witness?'
-                                    : 'You want to delete this recording?'}
+                                    : isUploadVideo
+                                        ? 'Are you sure you want to stop uploading this video?'
+                                        : 'You want to delete this recording?'}
                             </p>
                         </div>
                     </div>
                     <div className="flex justify-end gap-3">
                         <button
                             className="px-4 py-2 rounded-md border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                            onClick={() => setConfirmModal(null)}
+                            onClick={() => {
+                                const modalData = confirmModal;
+                                setConfirmModal(null);
+                                if (isUploadVideo) {
+                                    handleResumeUploadingVideo(modalData.witnessId, modalData.recordId);
+                                }
+                            }}
                         >
-                            Cancel
+                            {isUploadVideo ? 'No, Continue' : 'Cancel'}
                         </button>
                         <button
                             className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
                             onClick={confirmDelete}
                         >
-                            Confirm
+                            {isUploadVideo ? 'Yes, Cancel Upload' : 'Confirm'}
                         </button>
                     </div>
                 </div>
@@ -367,7 +380,9 @@ export default function WitnessManagement({
                                                 <Edit3 className="w-4 h-4 text-gray-500" />
                                             </button>
                                             {(() => {
-                                                const uploadedCount = (witnessRecords[witness.id] || []).filter(r => r.video).length;
+                                                const uploadedCount = (witnessRecords[witness.id] || []).filter(
+                                                    (r) => r.video?.uploadStatus === 'uploaded'
+                                                ).length;
                                                 const label =
                                                     uploadedCount === 0
                                                         ? '0 Recordings Uploaded'
@@ -584,6 +599,11 @@ export default function WitnessManagement({
                                                                     </div>
                                                                 </div>
                                                             )}
+                                                            {record?.video?.uploadStatus === 'paused' && (
+                                                                <p className="mt-2 text-xs font-medium text-amber-600">
+                                                                    Upload paused at {record.video.uploadProgress ?? 0}%. Choose "No, Continue" to resume.
+                                                                </p>
+                                                            )}
                                                             {record?.video?.uploadStatus === 'failed' && (
                                                                 <p className="mt-2 text-xs font-medium text-red-600">
                                                                     {record.video.uploadError || 'Upload failed'}
@@ -594,7 +614,16 @@ export default function WitnessManagement({
                                                     <button
                                                         type="button"
                                                         className="p-2 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
-                                                        onClick={() => handleUploadVideo(witness.id, record.id, null)}
+                                                        onClick={async () => {
+                                                            if (record?.video?.uploadStatus === 'uploading' || record?.video?.uploadStatus === 'paused') {
+                                                                const paused = await handlePauseUploadingVideo(witness.id, record.id);
+                                                                if (paused) {
+                                                                    toggleModal({ type: 'upload-video', witnessId: witness.id, recordId: record.id });
+                                                                }
+                                                                return;
+                                                            }
+                                                            handleUploadVideo(witness.id, record.id, null);
+                                                        }}
                                                         aria-label="Remove uploaded video"
                                                     >
                                                         <Trash2 className="w-4 h-4" />
@@ -674,7 +703,9 @@ export default function WitnessManagement({
                                             }}
                                             disabled={
                                                 savingWitnessIds?.has?.(witness.id) ||
-                                                (witnessRecords[witness.id] || []).some((record) => record?.video?.uploadStatus === 'uploading')
+                                                (witnessRecords[witness.id] || []).some((record) =>
+                                                    record?.video?.uploadStatus === 'uploading' || record?.video?.uploadStatus === 'paused'
+                                                )
                                             }
                                             className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                         >

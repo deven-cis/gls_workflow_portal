@@ -12,6 +12,11 @@ const NAV_URLS = {
     SETTINGS: '/dashboard/settings',
 };
 
+const ADMIN_ROLES = [
+    "1b. Staff: Videographers Georgia",
+    "9c. Admin"
+];
+
 const ADMIN_MODE_STORAGE_KEY = 'showAllHistory';
 
 export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
@@ -21,7 +26,7 @@ export default function Sidebar({ isSidebarCollapsed, setIsSidebarCollapsed }) {
     const userRole = getUserRole();
     const [showAllHistory, setShowAllHistory] = useState(false);
     const [isHydrated, setIsHydrated] = useState(false);
-    const isStaff = userRole.includes('Staff:');
+    const isStaff = ADMIN_ROLES.includes(userRole?.trim());
 
     // Initialize from localStorage on mount
     useEffect(() => {

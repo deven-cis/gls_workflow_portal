@@ -13,6 +13,22 @@ export const useWitnessManagement = (witnessesData, toast) => {
     const searchParams = useSearchParams();
     const uploadControllersRef = useRef(new Map());
 
+    const pauseUploadSession = useCallback((uploadId) => {
+        if (!uploadId) return Promise.resolve(null);
+        return witnessesAPI.pauseWitnessVideoUpload({ uploadId }).catch((error) => {
+            console.warn('Failed to pause witness video upload on backend:', error);
+            throw error;
+        });
+    }, []);
+
+    const resumeUploadSession = useCallback((uploadId) => {
+        if (!uploadId) return Promise.resolve(null);
+        return witnessesAPI.resumeWitnessVideoUpload({ uploadId }).catch((error) => {
+            console.warn('Failed to resume witness video upload on backend:', error);
+            throw error;
+        });
+    }, []);
+
     const cancelUploadSession = useCallback((uploadId) => {
         if (!uploadId) return;
         witnessesAPI.cancelWitnessVideoUpload({ uploadId }).catch((error) => {
@@ -391,20 +407,109 @@ export const useWitnessManagement = (witnessesData, toast) => {
         }));
     }, []);
 
+    const runUploadFlow = useCallback(async ({
+        witnessId,
+        recordId,
+        file,
+        uploadId = null,
+        startChunk = 0,
+        totalChunks = null,
+        baseVideo,
+        localDuration = null,
+    }) => {
+        const uploadKey = `${witnessId}:${recordId}`;
+        const controller = new AbortController();
+        const existingState = uploadControllersRef.current.get(uploadKey) || {};
+        uploadControllersRef.current.set(uploadKey, {
+            ...existingState,
+            controller,
+            file,
+            uploadId: uploadId ?? existingState.uploadId ?? null,
+            nextChunkIndex: startChunk,
+            totalChunks,
+            paused: false,
+            pauseRequested: false,
+        });
+
+        try {
+            const uploaded = await witnessesAPI.uploadVideoInChunks(file, {
+                signal: controller.signal,
+                uploadId,
+                startChunk,
+                totalChunks,
+                onInitialized: (initializedUploadId) => {
+                    const current = uploadControllersRef.current.get(uploadKey);
+                    if (!current) return;
+                    uploadControllersRef.current.set(uploadKey, {
+                        ...current,
+                        uploadId: initializedUploadId,
+                    });
+                },
+                onChunkUploaded: (chunkResult) => {
+                    const current = uploadControllersRef.current.get(uploadKey);
+                    if (!current) return;
+                    uploadControllersRef.current.set(uploadKey, {
+                        ...current,
+                        nextChunkIndex: chunkResult?.received_chunks ?? current.nextChunkIndex,
+                        totalChunks: chunkResult?.total_chunks ?? current.totalChunks,
+                    });
+                },
+                onProgress: (progress) => {
+                    handleUpdateRecord(witnessId, recordId, 'video', {
+                        ...baseVideo,
+                        uploadStatus: 'uploading',
+                        uploadProgress: progress,
+                    });
+                },
+            });
+
+            handleUpdateRecord(witnessId, recordId, 'video', {
+                name: uploaded?.file_name ?? file.name,
+                filePath: uploaded?.file_path ?? null,
+                uploadedAt: new Date().toISOString(),
+                size: uploaded?.file_size ?? file.size,
+                durationSeconds: uploaded?.duration_seconds ?? localDuration ?? null,
+                timecode: uploaded?.timecode ?? null,
+                uploadStatus: 'uploaded',
+                uploadProgress: 100,
+                uploadToken: uploaded?.upload_id ?? null,
+            });
+            uploadControllersRef.current.delete(uploadKey);
+            return uploaded;
+        } catch (e) {
+            if (e?.name === 'AbortError') {
+                const current = uploadControllersRef.current.get(uploadKey);
+                if (current?.pauseRequested) {
+                    uploadControllersRef.current.set(uploadKey, {
+                        ...current,
+                        controller: null,
+                        paused: true,
+                        pauseRequested: false,
+                    });
+                    return null;
+                }
+                uploadControllersRef.current.delete(uploadKey);
+                return null;
+            }
+            uploadControllersRef.current.delete(uploadKey);
+            throw e;
+        }
+    }, [handleUpdateRecord]);
+
     // Handle upload video
     const handleUploadVideo = useCallback(async (witnessId, recordId, file) => {
         // allow removing selected video
         if (!file) {
             const records = witnessRecords[witnessId] || [];
             const record = records.find((r) => r.id === recordId);
-            if (record?.video?.uploadStatus === 'uploading') {
+            if (record?.video?.uploadStatus === 'uploading' || record?.video?.uploadStatus === 'paused') {
                 const uploadKey = `${witnessId}:${recordId}`;
                 const uploadState = uploadControllersRef.current.get(uploadKey);
                 if (uploadState?.controller) {
                     uploadState.controller.abort();
-                    cancelUploadSession(uploadState.uploadId);
-                    uploadControllersRef.current.delete(uploadKey);
                 }
+                cancelUploadSession(uploadState?.uploadId);
+                uploadControllersRef.current.delete(uploadKey);
                 setWitnessRecords((prev) => ({
                     ...prev,
                     [witnessId]: (prev[witnessId] || []).map((r) =>
@@ -446,8 +551,6 @@ export const useWitnessManagement = (witnessesData, toast) => {
         };
 
         const uploadKey = `${witnessId}:${recordId}`;
-        const controller = new AbortController();
-        uploadControllersRef.current.set(uploadKey, { controller, uploadId: null });
 
         handleUpdateRecord(witnessId, recordId, 'video', baseVideo);
 
@@ -459,37 +562,15 @@ export const useWitnessManagement = (witnessesData, toast) => {
 
             handleUpdateRecord(witnessId, recordId, 'video', previewVideo);
 
-            const uploaded = await witnessesAPI.uploadVideoInChunks(file, {
-                signal: controller.signal,
-                onInitialized: (uploadId) => {
-                    const current = uploadControllersRef.current.get(uploadKey);
-                    if (!current) return;
-                    uploadControllersRef.current.set(uploadKey, { ...current, uploadId });
-                },
-                onProgress: (progress) => {
-                    handleUpdateRecord(witnessId, recordId, 'video', {
-                        ...previewVideo,
-                        uploadStatus: 'uploading',
-                        uploadProgress: progress,
-                    });
-                },
+            await runUploadFlow({
+                witnessId,
+                recordId,
+                file,
+                baseVideo: previewVideo,
+                localDuration,
             });
-
-            handleUpdateRecord(witnessId, recordId, 'video', {
-                name: uploaded?.file_name ?? file.name,
-                filePath: uploaded?.file_path ?? null,
-                uploadedAt: new Date().toISOString(),
-                size: uploaded?.file_size ?? file.size,
-                durationSeconds: uploaded?.duration_seconds ?? localDuration ?? null,
-                timecode: uploaded?.timecode ?? null,
-                uploadStatus: 'uploaded',
-                uploadProgress: 100,
-                uploadToken: uploaded?.upload_id ?? null,
-            });
-            uploadControllersRef.current.delete(uploadKey);
         } catch (e) {
             if (e?.name === 'AbortError') {
-                uploadControllersRef.current.delete(uploadKey);
                 return;
             }
             console.error('Failed to upload witness video:', e);
@@ -499,20 +580,120 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 uploadProgress: 0,
                 uploadError: e?.message || 'Upload failed',
             });
-            uploadControllersRef.current.delete(uploadKey);
             toast.error(e?.message || 'Failed to upload video');
         }
-    }, [extractLocalVideoDuration, handleUpdateRecord, toast, witnessRecords]);
+    }, [cancelUploadSession, extractLocalVideoDuration, handleUpdateRecord, runUploadFlow, toast, witnessRecords]);
+
+    const handlePauseUploadingVideo = useCallback(async (witnessId, recordId) => {
+        const uploadKey = `${witnessId}:${recordId}`;
+        const uploadState = uploadControllersRef.current.get(uploadKey);
+        const record = (witnessRecords[witnessId] || []).find((r) => r.id === recordId);
+        if (!record?.video) return false;
+        if (record.video.uploadStatus === 'paused') return true;
+        if (record.video.uploadStatus !== 'uploading') return false;
+
+        if (uploadState?.controller) {
+            uploadControllersRef.current.set(uploadKey, {
+                ...uploadState,
+                pauseRequested: true,
+            });
+            uploadState.controller.abort();
+        }
+
+        try {
+            const pauseResult = uploadState?.uploadId
+                ? await pauseUploadSession(uploadState.uploadId)
+                : null;
+
+            const receivedChunks = pauseResult?.received_chunks ?? uploadState?.nextChunkIndex ?? 0;
+            const totalChunks = pauseResult?.total_chunks ?? uploadState?.totalChunks ?? Math.max(1, Math.ceil((uploadState?.file?.size || record.video.size || 0) / (50 * 1024 * 1024)));
+            const progress = totalChunks > 0 ? Math.round((receivedChunks / totalChunks) * 100) : (record.video.uploadProgress ?? 0);
+
+            if (uploadState) {
+                uploadControllersRef.current.set(uploadKey, {
+                    ...uploadState,
+                    controller: null,
+                    paused: true,
+                    pauseRequested: false,
+                    nextChunkIndex: receivedChunks,
+                    totalChunks,
+                });
+            }
+
+            handleUpdateRecord(witnessId, recordId, 'video', {
+                ...record.video,
+                uploadStatus: 'paused',
+                uploadProgress: progress,
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to pause upload:', error);
+            toast.error(error?.message || 'Failed to pause upload');
+            if (uploadState) {
+                uploadControllersRef.current.set(uploadKey, {
+                    ...uploadState,
+                    pauseRequested: false,
+                });
+            }
+            return false;
+        }
+    }, [handleUpdateRecord, pauseUploadSession, toast, witnessRecords]);
+
+    const handleResumeUploadingVideo = useCallback(async (witnessId, recordId) => {
+        const uploadKey = `${witnessId}:${recordId}`;
+        const uploadState = uploadControllersRef.current.get(uploadKey);
+        const record = (witnessRecords[witnessId] || []).find((r) => r.id === recordId);
+        if (!record?.video || !uploadState?.file) {
+            toast.error('Upload cannot be resumed because the file is no longer available.');
+            return false;
+        }
+
+        try {
+            const resumeResult = uploadState?.uploadId
+                ? await resumeUploadSession(uploadState.uploadId)
+                : null;
+            const startChunk = resumeResult?.received_chunks ?? uploadState?.nextChunkIndex ?? 0;
+            const totalChunks = resumeResult?.total_chunks ?? uploadState?.totalChunks ?? Math.max(1, Math.ceil(uploadState.file.size / (50 * 1024 * 1024)));
+            const progress = totalChunks > 0 ? Math.round((startChunk / totalChunks) * 100) : 0;
+            const resumedVideo = {
+                ...record.video,
+                uploadStatus: 'uploading',
+                uploadProgress: progress,
+            };
+
+            handleUpdateRecord(witnessId, recordId, 'video', resumedVideo);
+
+            await runUploadFlow({
+                witnessId,
+                recordId,
+                file: uploadState.file,
+                uploadId: uploadState.uploadId ?? resumeResult?.upload_id ?? null,
+                startChunk,
+                totalChunks,
+                baseVideo: resumedVideo,
+                localDuration: record.video.durationSeconds ?? null,
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to resume upload:', error);
+            handleUpdateRecord(witnessId, recordId, 'video', {
+                ...record.video,
+                uploadStatus: 'paused',
+            });
+            toast.error(error?.message || 'Failed to resume upload');
+            return false;
+        }
+    }, [handleUpdateRecord, resumeUploadSession, runUploadFlow, toast, witnessRecords]);
 
     // Handle delete record
     const handleDeleteRecord = useCallback((witnessId, recordId) => {
         const record = (witnessRecords[witnessId] || []).find((r) => r.id === recordId);
-        if (record?.video?.uploadStatus === 'uploading') {
-            const uploadKey = `${witnessId}:${recordId}`;
-            const uploadState = uploadControllersRef.current.get(uploadKey);
-            if (uploadState?.controller) {
-                uploadState.controller.abort();
-                cancelUploadSession(uploadState.uploadId);
+            if (record?.video?.uploadStatus === 'uploading') {
+                const uploadKey = `${witnessId}:${recordId}`;
+                const uploadState = uploadControllersRef.current.get(uploadKey);
+                if (uploadState?.controller) {
+                    uploadState.controller.abort();
+                    cancelUploadSession(uploadState.uploadId);
                 uploadControllersRef.current.delete(uploadKey);
             }
         }
@@ -576,9 +757,11 @@ export const useWitnessManagement = (witnessesData, toast) => {
 
             const deletedIds = new Set(deletedWitnessVideoIds[witnessId] || []);
             const activeRecords = records || [];
-            const uploadingRecord = activeRecords.find((r) => r?.video?.uploadStatus === 'uploading');
-            if (uploadingRecord) {
-                toast.error('Please wait for all video uploads to complete before saving.');
+            const pendingUploadRecord = activeRecords.find((r) =>
+                r?.video?.uploadStatus === 'uploading' || r?.video?.uploadStatus === 'paused'
+            );
+            if (pendingUploadRecord) {
+                toast.error('Please wait for all video uploads to complete or resume paused uploads before saving.');
                 return;
             }
 
@@ -844,6 +1027,8 @@ export const useWitnessManagement = (witnessesData, toast) => {
         handleUpdateRecord,
         handleUploadVideo,
         handleDeleteRecord,
+        handlePauseUploadingVideo,
+        handleResumeUploadingVideo,
         handleUpdateTemplate,
         handleSaveWitness,
         

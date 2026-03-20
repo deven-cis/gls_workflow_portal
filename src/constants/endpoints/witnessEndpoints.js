@@ -10,6 +10,8 @@ export const witnessEndpoints = {
   uploadInit: () => '/witnesses/uploads/init',
   uploadChunk: () => '/witnesses/uploads/chunk',
   uploadComplete: () => '/witnesses/uploads/complete',
+  uploadPause: () => '/witnesses/uploads/pause',
+  uploadResume: () => '/witnesses/uploads/resume',
   uploadCancel: () => '/witnesses/uploads/cancel',
   downloadCompleteVideo: (jobNo, witnessId) =>
     `/witnesses/${jobNo}/download_witnesses_complete_video?witness_id=${witnessId}&download_all=true`,
