@@ -36,7 +36,7 @@ export default function WitnessManagement({
     jobId
 }) {
     const [pendingRename, setPendingRename] = useState({});
-    const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record'|'upload-video', witnessId, recordId }
+    const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record'|'record-uploading'|'upload-video'|'delete-video', witnessId, recordId }
     const [templateOpen, setTemplateOpen] = useState({});
     const [downloadingCompleteVideo, setDownloadingCompleteVideo] = useState({}); // Track downloading state per witness: { witnessId: boolean }
     const handleCancel = onCancelWitnesses || (() => {});
@@ -179,7 +179,11 @@ export default function WitnessManagement({
         if (!confirmModal) return;
         if (confirmModal.type === 'witness') {
             await handleDeleteWitness(confirmModal.witnessId);
+        } else if (confirmModal.type === 'record-uploading') {
+            await handleDeleteRecord(confirmModal.witnessId, confirmModal.recordId);
         } else if (confirmModal.type === 'upload-video') {
+            await handleUploadVideo(confirmModal.witnessId, confirmModal.recordId, null);
+        } else if (confirmModal.type === 'delete-video') {
             await handleUploadVideo(confirmModal.witnessId, confirmModal.recordId, null);
         } else if (confirmModal.type === 'record') {
             handleDeleteRecord(confirmModal.witnessId, confirmModal.recordId);
@@ -191,6 +195,8 @@ export default function WitnessManagement({
         if (!confirmModal) return null;
         const isWitness = confirmModal.type === 'witness';
         const isUploadVideo = confirmModal.type === 'upload-video';
+        const isRecordUploading = confirmModal.type === 'record-uploading';
+        const isDeleteVideo = confirmModal.type === 'delete-video';
         return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
                 <div className="bg-white rounded-lg shadow-xl w-full max-w-sm p-5 space-y-4">
@@ -200,13 +206,15 @@ export default function WitnessManagement({
                         </div>
                         <div>
                             <h4 className="text-base font-semibold text-gray-900">
-                                {isWitness ? 'Delete Witness?' : isUploadVideo ? 'Stop Upload?' : 'Delete Recording?'}
+                                {isWitness ? 'Delete Witness?' : isUploadVideo ? 'Stop Upload?' : isDeleteVideo ? 'Delete Video?' : 'Delete Recording?'}
                             </h4>
                             <p className="text-sm text-gray-600">
                                 {isWitness
                                     ? 'You want to delete this witness?'
                                     : isUploadVideo
                                         ? 'Are you sure you want to stop uploading this video?'
+                                        : isDeleteVideo
+                                            ? 'Are you sure you want to delete this video?'
                                         : 'You want to delete this recording?'}
                             </p>
                         </div>
@@ -217,7 +225,7 @@ export default function WitnessManagement({
                             onClick={() => {
                                 const modalData = confirmModal;
                                 setConfirmModal(null);
-                                if (isUploadVideo) {
+                                if (isUploadVideo || isRecordUploading) {
                                     handleResumeUploadingVideo(modalData.witnessId, modalData.recordId);
                                 }
                             }}
@@ -228,7 +236,7 @@ export default function WitnessManagement({
                             className="px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-red-700"
                             onClick={confirmDelete}
                         >
-                            {isUploadVideo ? 'Yes, Cancel Upload' : 'Confirm'}
+                            {isUploadVideo ? 'Yes, Cancel Upload' : isDeleteVideo ? 'Yes, Delete Video' : 'Confirm'}
                         </button>
                     </div>
                 </div>
@@ -542,7 +550,16 @@ export default function WitnessManagement({
                                                 </div>
                                                 <button
                                                     type="button"
-                                                    onClick={() => toggleModal({ type: 'record', witnessId: witness.id, recordId: record.id })}
+                                                    onClick={async () => {
+                                                        if (record?.video?.uploadStatus === 'uploading' || record?.video?.uploadStatus === 'paused') {
+                                                            const paused = await handlePauseUploadingVideo(witness.id, record.id);
+                                                            if (paused) {
+                                                                toggleModal({ type: 'record-uploading', witnessId: witness.id, recordId: record.id });
+                                                            }
+                                                            return;
+                                                        }
+                                                        toggleModal({ type: 'record', witnessId: witness.id, recordId: record.id });
+                                                    }}
                                                     className="p-2 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
@@ -622,7 +639,7 @@ export default function WitnessManagement({
                                                                 }
                                                                 return;
                                                             }
-                                                            handleUploadVideo(witness.id, record.id, null);
+                                                            toggleModal({ type: 'delete-video', witnessId: witness.id, recordId: record.id });
                                                         }}
                                                         aria-label="Remove uploaded video"
                                                     >
