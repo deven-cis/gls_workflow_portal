@@ -13,6 +13,7 @@ export const witnessEndpoints = {
   uploadPause: () => '/witnesses/uploads/pause',
   uploadResume: () => '/witnesses/uploads/resume',
   uploadCancel: () => '/witnesses/uploads/cancel',
+  downloadVideoLink: (videoId) => `/witnesses/videos/${videoId}/download-link`,
   downloadCompleteVideo: (jobNo, witnessId) =>
     `/witnesses/${jobNo}/download_witnesses_complete_video?witness_id=${witnessId}&download_all=true`,
 };

@@ -202,10 +202,61 @@ export const historyAPI = {
   },
 
   
-  downloadVideo: async (filePath, fileName) => {
-      const downloadUrl = `${API_BASE_URL}/${filePath}`;
-      const ext = extractFileExtension('', filePath, 'mp4');
-      const dynamicFileName = fileName || `video.${ext}`;
+  _triggerDirectDownload: (downloadUrl, fileName) => {
+    if (typeof window === 'undefined') return false;
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    if (fileName) {
+      link.setAttribute('download', fileName);
+    }
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return true;
+  },
+
+  _resolveFileUrl: (filePath) => {
+    if (!filePath) return '';
+    if (String(filePath).startsWith('http://') || String(filePath).startsWith('https://')) {
+      return filePath;
+    }
+    const normalizedPath = String(filePath).replace(/^\/+/, '');
+    return `${API_BASE_URL}/${normalizedPath}`;
+  },
+
+  getSingleVideoDownloadLink: async (videoId) => {
+    if (!videoId) return null;
+    const response = await galloInstance(endpoints.witnesses.downloadVideoLink(videoId));
+    if (!response || response.success === false) {
+      const message = response?.message || 'Failed to get download link';
+      throw new Error(message);
+    }
+    return response?.result ?? response;
+  },
+
+  downloadVideo: async ({ videoId = null, filePath = null, fileName = null } = {}) => {
+    // Preferred flow: ask backend for direct download URL (future-ready for CDN/S3).
+    if (videoId) {
+      try {
+        const data = await historyAPI.getSingleVideoDownloadLink(videoId);
+        const directUrl = data?.download_url;
+        const directName = data?.file_name || fileName;
+        if (directUrl) {
+          return historyAPI._triggerDirectDownload(directUrl, directName);
+        }
+      } catch (err) {
+        console.warn('Direct download link failed, falling back to file path download:', err);
+      }
+    }
+
+    // Backward-compatible fallback (legacy path-based download).
+    if (!filePath) {
+      throw new Error('File path not available');
+    }
+    const downloadUrl = historyAPI._resolveFileUrl(filePath);
+    const ext = extractFileExtension('', filePath, 'mp4');
+    const dynamicFileName = fileName || `video.${ext}`;
     return downloadFile(downloadUrl, dynamicFileName);
   },
 
@@ -218,4 +269,3 @@ export const historyAPI = {
     return downloadFile(downloadUrl, 'all_videos_merged.mp4');
   },
 };
-

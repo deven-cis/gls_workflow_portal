@@ -280,8 +280,17 @@ export default function HistoryView() {
                     witnessVideos.forEach((video) => {
                         // Only process videos that have both file_name and file_path
                         if (video.file_name && video.file_path) {
+                            const knownSize =
+                                video.file_size !== undefined && video.file_size !== null
+                                    ? Number(video.file_size)
+                                    : null;
                             recordingsPromises.push(
-                                fetchVideoFileSize(video.file_path).then(size => ({
+                                (
+                                    knownSize !== null && !Number.isNaN(knownSize)
+                                        ? Promise.resolve(knownSize)
+                                        : fetchVideoFileSize(video.file_path)
+                                ).then(size => ({
+                                    videoId: video.id ?? null,
                                     name: witness.witness_name,
                                     fileName: video.file_name,
                                     filePath: video.file_path,
@@ -637,4 +646,3 @@ const EmptyState = () => {
         </div>
     );
 };
-

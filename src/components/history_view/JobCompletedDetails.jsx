@@ -19,14 +19,18 @@ export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
   const hasAttorneys = Array.isArray(jobDetails.attorneys) && jobDetails.attorneys.length > 0;
 
   const handleDownloadVideo = async (recording) => {
-    if (!recording.filePath) {
-      toast.error('File path not available');
+    if (!recording.videoId && !recording.filePath) {
+      toast.error('Video download information not available');
       return;
     }
 
     try {
       setDownloadingVideo(recording.fileName);
-      await historyAPI.downloadVideo(recording.filePath, recording.fileName);
+      await historyAPI.downloadVideo({
+        videoId: recording.videoId,
+        filePath: recording.filePath,
+        fileName: recording.fileName,
+      });
       toast.success('Video downloaded successfully');
     } catch (err) {
       console.error('Download error:', err);
