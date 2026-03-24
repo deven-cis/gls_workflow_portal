@@ -13,8 +13,7 @@ const NAV_URLS = {
 };
 
 const ADMIN_ROLES = [
-    "1b. Staff: Videographers Georgia",
-    "9c. Admin"
+    "1b. Staff:  Videographers Georgia"
 ];
 
 const ADMIN_MODE_STORAGE_KEY = 'showAllHistory';

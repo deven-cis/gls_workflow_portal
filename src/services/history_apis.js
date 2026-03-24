@@ -246,6 +246,10 @@ export const historyAPI = {
           return historyAPI._triggerDirectDownload(directUrl, directName);
         }
       } catch (err) {
+        const message = err?.message || 'Failed to get download link';
+        if (/missing on server/i.test(message) || /not found or access denied/i.test(message)) {
+          throw err;
+        }
         console.warn('Direct download link failed, falling back to file path download:', err);
       }
     }
@@ -257,7 +261,15 @@ export const historyAPI = {
     const downloadUrl = historyAPI._resolveFileUrl(filePath);
     const ext = extractFileExtension('', filePath, 'mp4');
     const dynamicFileName = fileName || `video.${ext}`;
-    return downloadFile(downloadUrl, dynamicFileName);
+    try {
+      return await downloadFile(downloadUrl, dynamicFileName);
+    } catch (err) {
+      const message = err?.message || '';
+      if (/not found/i.test(message)) {
+        throw new Error('Video file is missing on server');
+      }
+      throw err;
+    }
   },
 
   // Download all videos merged into one file

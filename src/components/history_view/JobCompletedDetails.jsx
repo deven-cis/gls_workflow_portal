@@ -33,8 +33,11 @@ export default function JobCompletedDetails({ isOpen, onClose, jobDetails }) {
       });
       toast.success('Video downloaded successfully');
     } catch (err) {
-      console.error('Download error:', err);
-      toast.error('Failed to download video. Please try again.');
+      const message = err?.message || 'Failed to download video. Please try again.';
+      if (!/missing on server/i.test(message)) {
+        console.warn('Download error:', err);
+      }
+      toast.error(message);
     } finally {
       setDownloadingVideo(null);
     }

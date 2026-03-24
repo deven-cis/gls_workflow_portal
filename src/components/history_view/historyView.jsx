@@ -9,7 +9,6 @@ import HistoryDateRangePicker from '@/components/history_view/DateRangePicker';
 import JobCompletedDetails from '@/components/history_view/JobCompletedDetails';
 import JobCancelDetails from '@/components/history_view/JobCancelDetails';
 import HistoryCard from '@/components/history_view/HistoryCard';
-import { fetchVideoFileSize } from '@/lib/utils';
 
 
 export default function HistoryView() {
@@ -285,11 +284,7 @@ export default function HistoryView() {
                                     ? Number(video.file_size)
                                     : null;
                             recordingsPromises.push(
-                                (
-                                    knownSize !== null && !Number.isNaN(knownSize)
-                                        ? Promise.resolve(knownSize)
-                                        : fetchVideoFileSize(video.file_path)
-                                ).then(size => ({
+                                Promise.resolve(knownSize).then(size => ({
                                     videoId: video.id ?? null,
                                     name: witness.witness_name,
                                     fileName: video.file_name,
