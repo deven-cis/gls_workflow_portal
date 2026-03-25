@@ -14,6 +14,10 @@ export const witnessEndpoints = {
   uploadResume: () => '/witnesses/uploads/resume',
   uploadCancel: () => '/witnesses/uploads/cancel',
   downloadVideoLink: (videoId) => `/witnesses/videos/${videoId}/download-link`,
+  requestCompleteVideoMerge: (witnessId) => `/witnesses/${witnessId}/complete-video/request`,
+  completeVideoStatus: (witnessId) => `/witnesses/${witnessId}/complete-video/status`,
+  completeVideoDownloadLink: (witnessId) => `/witnesses/${witnessId}/complete-video/download-link`,
+  completeVideoDownload: (witnessId) => `/witnesses/${witnessId}/complete-video/download`,
   downloadCompleteVideo: (jobNo, witnessId) =>
     `/witnesses/${jobNo}/download_witnesses_complete_video?witness_id=${witnessId}&download_all=true`,
 };

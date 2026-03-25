@@ -84,7 +84,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
         const fileName = video.file_name ?? video.fileName ?? null;
         const filePath = video.file_path ?? video.filePath ?? null;
 
-        return {
+    return {
             id: video.id ?? `vid-${witnessId}-${index}`,
             backendId: video.id,
             startTime: start ? start.slice(0, 5) : '',
@@ -105,16 +105,49 @@ export const useWitnessManagement = (witnessesData, toast) => {
         };
     }, []);
 
+    const mapWitnessSummary = useCallback((raw) => {
+        const mergedVideoPath = raw?.merged_video_path ?? raw?.mergedVideoPath ?? null;
+        const mergeRequestedAt = raw?.merge_requested_at ?? raw?.mergeRequestedAt ?? null;
+        let mergeStatus = raw?.merge_status ?? raw?.mergeStatus ?? null;
+        if ((!mergeStatus || mergeStatus === 'pending') && !mergeRequestedAt && !mergedVideoPath) {
+            mergeStatus = 'not_requested';
+        }
+        return {
+            id: raw?.id ?? raw?.witness_id ?? raw?.uuid ?? Date.now() + Math.random(),
+            name: raw?.name ?? raw?.witness_name ?? raw?.full_name ?? 'Unnamed Witness',
+            mergedVideoPath,
+            mergedVideoName: raw?.merged_video_name ?? raw?.mergedVideoName ?? null,
+            mergedVideoSize: raw?.merged_video_size ?? raw?.mergedVideoSize ?? null,
+            mergedDuration: raw?.merged_duration ?? raw?.mergedDuration ?? null,
+            mergeStatus: mergeStatus || 'not_requested',
+            mergeError: raw?.merge_error ?? raw?.mergeError ?? null,
+            mergeRequestedAt,
+            mergeCompletedAt: raw?.merge_completed_at ?? raw?.mergeCompletedAt ?? null,
+        };
+    }, []);
+
+    const applyWitnessMergeState = useCallback((witnessId, raw) => {
+        if (!witnessId || !raw) return;
+        const patch = {
+            mergedVideoPath: raw?.merged_video_path ?? raw?.mergedVideoPath ?? null,
+            mergedVideoName: raw?.merged_video_name ?? raw?.mergedVideoName ?? null,
+            mergedVideoSize: raw?.merged_video_size ?? raw?.mergedVideoSize ?? null,
+            mergedDuration: raw?.merged_duration ?? raw?.mergedDuration ?? null,
+            mergeStatus: raw?.merge_status ?? raw?.mergeStatus ?? 'not_requested',
+            mergeError: raw?.merge_error ?? raw?.mergeError ?? null,
+            mergeRequestedAt: raw?.merge_requested_at ?? raw?.mergeRequestedAt ?? null,
+            mergeCompletedAt: raw?.merge_completed_at ?? raw?.mergeCompletedAt ?? null,
+        };
+        setWitnesses((prev) => prev.map((w) => (w.id === witnessId ? { ...w, ...patch } : w)));
+    }, []);
+
     // Seed witnesses from page data - maintain stable order across updates
     useEffect(() => {
         if (!Array.isArray(witnessesData)) return;
         
         setWitnesses((prevWitnesses) => {
             const mapped = witnessesData
-                .map((w) => ({
-                    id: w.id ?? w.witness_id ?? w.uuid ?? Date.now() + Math.random(),
-                    name: w.name ?? w.witness_name ?? w.full_name ?? 'Unnamed Witness',
-                }))
+                .map((w) => mapWitnessSummary(w))
                 .filter((w) => w.id != null);
             
             // If this is the first load, sort by ID descending (newest first)
@@ -129,7 +162,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
             const newWitnesses = mapped.filter(w => !prevIds.has(w.id));
             const updatedExisting = prevWitnesses.map(prev => {
                 const updated = mapped.find(m => m.id === prev.id);
-                return updated ? { ...prev, name: updated.name } : prev;
+                return updated ? { ...prev, ...updated } : prev;
             });
             
             // Return: new witnesses at top, then existing in their current order
@@ -212,7 +245,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
             }
             return next;
         });
-    }, [witnessesData, mapWitnessVideoRecord]);
+    }, [witnessesData, mapWitnessSummary, mapWitnessVideoRecord]);
 
     // Handle add witness
     const handleAddWitness = useCallback(async () => {
@@ -859,6 +892,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
             if (saved?.witness_name) {
                 setWitnesses((prev) => prev.map((w) => (w.id === witnessId ? { ...w, name: saved.witness_name } : w)));
             }
+            applyWitnessMergeState(witnessId, saved);
             setWitnessTemplates((prev) => ({
                 ...prev,
                 [witnessId]: {
@@ -883,6 +917,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 }
                 
                 if (raw) {
+                    applyWitnessMergeState(witnessId, raw);
                     // Backend returns witness_videos (serialization alias) from WitnessSchema
                     const vids = raw.witness_videos ?? raw.witness_vid ?? raw.videos ?? [];
                     const processedVideos = (Array.isArray(vids) ? vids : []).map((v, idx) => {
@@ -999,7 +1034,23 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 return next;
             });
         }
-    }, [witnesses, deletedWitnessVideoIds, searchParams, params, toast, mapWitnessVideoRecord]);
+    }, [witnesses, deletedWitnessVideoIds, searchParams, params, toast, mapWitnessVideoRecord, applyWitnessMergeState]);
+
+    const handleRequestCompleteVideoMerge = useCallback(async (witnessId) => {
+        const result = await witnessesAPI.requestWitnessCompleteVideoMerge(witnessId);
+        applyWitnessMergeState(witnessId, result);
+        return result;
+    }, [applyWitnessMergeState]);
+
+    const handleRefreshCompleteVideoStatus = useCallback(async (witnessId) => {
+        const result = await witnessesAPI.getWitnessCompleteVideoStatus(witnessId);
+        applyWitnessMergeState(witnessId, result);
+        return result;
+    }, [applyWitnessMergeState]);
+
+    const handleDownloadWitnessCompleteVideo = useCallback(async (witnessId, witnessName) => {
+        return witnessesAPI.downloadWitnessesCompleteVideo(witnessId, witnessName);
+    }, []);
 
     return {
         // State
@@ -1031,6 +1082,9 @@ export const useWitnessManagement = (witnessesData, toast) => {
         handleResumeUploadingVideo,
         handleUpdateTemplate,
         handleSaveWitness,
+        handleRequestCompleteVideoMerge,
+        handleRefreshCompleteVideoStatus,
+        handleDownloadWitnessCompleteVideo,
         
         // Cancel handler to restore deleted videos
         handleCancelWitness: useCallback((witnessId) => {

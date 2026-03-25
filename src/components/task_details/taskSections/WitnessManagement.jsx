@@ -1,8 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import TimeInput from '@/components/task_details/task/TimeInput';
 import AddActionButton from '@/components/task_details/task/AddActionButton';
 import { Trash2, Edit3, ChevronDown, ChevronUp, Clock, Download } from 'lucide-react';
-import { witnessesAPI } from '@/services/witnesses_apis';
 
 export default function WitnessManagement({
     witnesses,
@@ -24,6 +23,9 @@ export default function WitnessManagement({
     handleResumeUploadingVideo,
     handleUpdateTemplate,
     handleRenameWitness,
+    handleRequestCompleteVideoMerge,
+    handleRefreshCompleteVideoStatus,
+    handleDownloadWitnessCompleteVideo,
     onSaveWitnesses,
     onCancelWitnesses,
     onSaveWitness,
@@ -39,34 +41,75 @@ export default function WitnessManagement({
     const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record'|'record-uploading'|'upload-video'|'delete-video', witnessId, recordId }
     const [templateOpen, setTemplateOpen] = useState({});
     const [downloadingCompleteVideo, setDownloadingCompleteVideo] = useState({}); // Track downloading state per witness: { witnessId: boolean }
+    const [requestingCompleteVideo, setRequestingCompleteVideo] = useState({});
     const handleCancel = onCancelWitnesses || (() => {});
     const handleSave = onSaveWitnesses || (() => {});
     const handleSaveSingle = onSaveWitness || (() => {});
     const handleCancelSingle = onCancelWitness || (() => {});
-    
 
-    const handleDownloadCompleteVideo = async (e, witnessId, witnessName) => {
+    const getEffectiveMergeStatus = (witness) => {
+        const status = witness?.mergeStatus || witness?.merge_status || 'not_requested';
+        const hasRequestedAt = !!(witness?.mergeRequestedAt || witness?.merge_requested_at);
+        const hasMergedPath = !!(witness?.mergedVideoPath || witness?.merged_video_path);
+        if ((status === 'pending' || !status) && !hasRequestedAt && !hasMergedPath) {
+            return 'not_requested';
+        }
+        return status;
+    };
+
+    useEffect(() => {
+        const activeWitnessIds = (witnesses || [])
+            .filter((witness) => ['pending', 'processing'].includes(getEffectiveMergeStatus(witness)))
+            .map((witness) => witness.id)
+            .filter(Boolean);
+
+        if (!activeWitnessIds.length || !handleRefreshCompleteVideoStatus) return undefined;
+
+        const intervalId = window.setInterval(() => {
+            activeWitnessIds.forEach((witnessId) => {
+                handleRefreshCompleteVideoStatus(witnessId).catch((error) => {
+                    console.warn('Failed to refresh complete video status:', error);
+                });
+            });
+        }, 5000);
+
+        return () => window.clearInterval(intervalId);
+    }, [witnesses, handleRefreshCompleteVideoStatus]);
+
+    const handleDownloadCompleteVideo = async (e, witness) => {
         e.preventDefault();
         e.stopPropagation();
-        if (!jobId) {
-            toast?.error?.('Job ID not available');
-            return;
-        }
+        const witnessId = witness?.id;
+        const witnessName = witness?.name;
         if (!witnessId) {
             toast?.error?.('Witness ID not available');
             return;
         }
+
+        const mergeStatus = getEffectiveMergeStatus(witness);
+        if (mergeStatus === 'completed' && (witness?.mergedVideoPath || witness?.merged_video_path)) {
+            try {
+                setDownloadingCompleteVideo((prev) => ({ ...prev, [witnessId]: true }));
+                await handleDownloadWitnessCompleteVideo?.(Number(witnessId), witnessName);
+                toast?.success?.('Complete video download started');
+            } catch (err) {
+                console.error('Failed to download complete video:', err);
+                toast?.error?.(err?.message || 'Failed to download complete video. Please try again.');
+            } finally {
+                setDownloadingCompleteVideo((prev) => ({ ...prev, [witnessId]: false }));
+            }
+            return;
+        }
+
         try {
-            setDownloadingCompleteVideo((prev) => ({ ...prev, [witnessId]: true }));
-            await witnessesAPI.downloadWitnessesCompleteVideo(Number(jobId), Number(witnessId), witnessName);
-            // Wait a bit to ensure the browser download dialog appears before showing success message
-            await new Promise(resolve => setTimeout(resolve, 300));
-            toast?.success?.('Complete video downloaded successfully');
+            setRequestingCompleteVideo((prev) => ({ ...prev, [witnessId]: true }));
+            await handleRequestCompleteVideoMerge?.(Number(witnessId));
+            toast?.success?.('Complete video generation started');
         } catch (err) {
-            console.error('Failed to download complete video:', err);
-            toast?.error?.(err?.message || 'Failed to download complete video. Please try again.');
+            console.error('Failed to start complete video generation:', err);
+            toast?.error?.(err?.message || 'Failed to start complete video generation. Please try again.');
         } finally {
-            setDownloadingCompleteVideo((prev) => ({ ...prev, [witnessId]: false }));
+            setRequestingCompleteVideo((prev) => ({ ...prev, [witnessId]: false }));
         }
     };
 
@@ -417,24 +460,33 @@ export default function WitnessManagement({
                                             videoRecords.every(r => !!r.backendId && !r.video?.file);
                                         
                                         if (!allVideosSaved || isProcessing) return null;
-                                        
+
+                                        const mergeStatus = getEffectiveMergeStatus(witness);
+                                        const isDownloading = !!downloadingCompleteVideo[witness.id];
+                                        const isRequesting = !!requestingCompleteVideo[witness.id];
+                                        const isGenerating = isRequesting || mergeStatus === 'pending' || mergeStatus === 'processing';
+                                        const canDownloadMerged = mergeStatus === 'completed' && !!(witness.mergedVideoPath || witness.merged_video_path);
+                                        const buttonLabel = canDownloadMerged
+                                            ? (isDownloading ? 'Downloading...' : 'Download complete video')
+                                            : (isGenerating ? 'Generating...' : (mergeStatus === 'failed' ? 'Regenerate complete video' : 'Generate complete video'));
+
                                         return (
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();
-                                                    handleDownloadCompleteVideo(e, witness.id, witness.name);
+                                                    handleDownloadCompleteVideo(e, witness);
                                                 }}
                                                 onMouseDown={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();
                                                 }}
-                                                disabled={downloadingCompleteVideo[witness.id]}
+                                                disabled={isDownloading || isGenerating}
                                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
                                                 <Download className="w-4 h-4 text-gray-500" />
-                                                {downloadingCompleteVideo[witness.id] ? 'Downloading...' : 'Download complete video'}
+                                                {buttonLabel}
                                             </button>
                                         );
                                     })()}

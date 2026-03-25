@@ -1,8 +1,20 @@
 import { galloInstance } from './galloInstance';
-import { downloadFile, extractFileExtension } from '@/lib/utils';
-import { API_BASE_URL } from '@/lib/config';
 import { endpoints } from '@/constants/endpoints';
 export const witnessesAPI = {
+    _triggerDirectDownload: (downloadUrl, fileName) => {
+        if (typeof window === 'undefined') return false;
+        const link = document.createElement('a');
+        link.href = downloadUrl;
+        if (fileName) {
+            link.setAttribute('download', fileName);
+        }
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return true;
+    },
+
     _throwIfAborted: (response) => {
         const error = response?.error;
         const message = response?.message || error?.message || '';
@@ -243,26 +255,39 @@ export const witnessesAPI = {
         return witnessesAPI.completeWitnessVideoUpload({ uploadId });
     },
 
-    /**
-     * Download complete merged video for a specific witness
-     * Backend endpoint: GET /witnesses/{job_no}/download_witnesses_complete_video?witness_id={witness_id}&download_all=true
-     * Returns FileResponse (merged video file)
-     * @param {number} jobNo - Job number
-     * @param {number} witnessId - Witness ID
-     * @param {string} [witnessName] - Optional witness name for filename
-     */
-    downloadWitnessesCompleteVideo: async (jobNo, witnessId, witnessName = null) => {
-        const downloadUrl = `${API_BASE_URL}${endpoints.witnesses.downloadCompleteVideo(
-            jobNo,
-            witnessId
-        )}`;
-        // Generate dynamic filename: if witness name provided, use it; otherwise use job number and witness ID
-        const sanitizedName = witnessName 
-            ? witnessName.replace(/[^a-zA-Z0-9_-]/g, '_').trim()
-            : `job_${jobNo}_witness_${witnessId}`;
-        // Extract dynamic extension from URL or use mp4 as default
-        const ext = extractFileExtension('', downloadUrl, 'mp4');
-        const defaultFileName = `${sanitizedName}_complete_video.${ext}`;
-        return downloadFile(downloadUrl, defaultFileName);
+    requestWitnessCompleteVideoMerge: async (witnessId) => {
+        const response = await galloInstance(endpoints.witnesses.requestCompleteVideoMerge(witnessId), {
+            method: 'POST',
+        });
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to start complete video generation');
+        }
+        return response?.result ?? response;
+    },
+
+    getWitnessCompleteVideoStatus: async (witnessId) => {
+        const response = await galloInstance(endpoints.witnesses.completeVideoStatus(witnessId));
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to get complete video status');
+        }
+        return response?.result ?? response;
+    },
+
+    getWitnessCompleteVideoDownloadLink: async (witnessId) => {
+        const response = await galloInstance(endpoints.witnesses.completeVideoDownloadLink(witnessId));
+        if (response && response.success === false) {
+            throw new Error(response?.message || 'Failed to get complete video download link');
+        }
+        return response?.result ?? response;
+    },
+
+    downloadWitnessesCompleteVideo: async (witnessId, witnessName = null) => {
+        const data = await witnessesAPI.getWitnessCompleteVideoDownloadLink(witnessId);
+        const directUrl = data?.download_url;
+        const directName = data?.file_name || witnessName || `witness_${witnessId}_complete_video.mp4`;
+        if (!directUrl) {
+            throw new Error('Download URL not available for complete witness video');
+        }
+        return witnessesAPI._triggerDirectDownload(directUrl, directName);
     },
 };
