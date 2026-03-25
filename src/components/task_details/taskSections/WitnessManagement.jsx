@@ -485,7 +485,14 @@ export default function WitnessManagement({
                                                 disabled={isDownloading || isGenerating}
                                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-gray-200 bg-white text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                                             >
-                                                <Download className="w-4 h-4 text-gray-500" />
+                                                {isGenerating ? (
+                                                    <span
+                                                        className="inline-block w-3.5 h-3.5 rounded-full border-2 border-blue-200 border-t-blue-600 animate-spin"
+                                                        aria-hidden="true"
+                                                    />
+                                                ) : (
+                                                    <Download className="w-4 h-4 text-gray-500" />
+                                                )}
                                                 {buttonLabel}
                                             </button>
                                         );
