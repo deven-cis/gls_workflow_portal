@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { logout } from '@/lib/auth';
 import { LogOut } from 'lucide-react';
@@ -14,10 +14,16 @@ export default function AvatarMenu({
     className = ''
 }) {
     const [open, setOpen] = useState(false);
+    const [imageFailed, setImageFailed] = useState(false);
     const router = useRouter();
 
     const initials = getInitials(name) || 'JK';
-    const useIconFallback = !avatarSrc && fallback === 'icon';
+    const hasUsableAvatar = Boolean(avatarSrc) && !imageFailed;
+    const useIconFallback = !hasUsableAvatar && fallback === 'icon';
+
+    useEffect(() => {
+        setImageFailed(false);
+    }, [avatarSrc]);
 
     const handleLogout = () => {
         setOpen(false);
@@ -34,9 +40,14 @@ export default function AvatarMenu({
                 } ${className}`}
                 aria-label="User menu"
             >
-                {avatarSrc ? (
+                {hasUsableAvatar ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarSrc} alt="Profile" className="w-full h-full object-cover" />
+                    <img
+                        src={avatarSrc}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                        onError={() => setImageFailed(true)}
+                    />
                 ) : useIconFallback ? (
                     // Placeholder icon (matches Settings)
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">

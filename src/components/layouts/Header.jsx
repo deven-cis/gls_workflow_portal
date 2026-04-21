@@ -42,14 +42,13 @@ export default function Header() {
 
     const resolveUrl = resolveFileUrl;
 
-    const safeTail = (s) => {
-        if (!s) return null;
-        try {
-            const parts = String(s).split('/');
-            return parts[parts.length - 1]?.slice(0, 40) || null;
-        } catch {
-            return null;
-        }
+    const shouldCacheBustAvatar = (rawPath, resolvedUrl) => {
+        if (!rawPath || !resolvedUrl) return false;
+        const raw = String(rawPath).trim();
+        const resolved = String(resolvedUrl).trim();
+        const isAbsoluteRaw = raw.startsWith('http://') || raw.startsWith('https://');
+        const isAbsoluteResolved = resolved.startsWith('http://') || resolved.startsWith('https://');
+        return !isAbsoluteRaw && !isAbsoluteResolved;
     };
 
     useEffect(() => {
@@ -77,8 +76,9 @@ export default function Header() {
                 const profile = await userSettingsAPI.getCurrentUser();
                 const raw = profile?.profile_image_url || null;
                 const url = resolveUrl(raw);
-                // bust cache after change/remove
-                const withCacheBust = url ? `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}` : null;
+                const withCacheBust = shouldCacheBustAvatar(raw, url)
+                    ? `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}`
+                    : url;
                 if (cancelled) return;
                 setAvatarSrc(withCacheBust);
             } catch (e) {

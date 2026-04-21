@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import TimeInput from '@/components/task_details/task/TimeInput';
 import AddActionButton from '@/components/task_details/task/AddActionButton';
 import { Trash2, Edit3, ChevronDown, ChevronUp, Clock, Download } from 'lucide-react';
@@ -37,6 +38,7 @@ export default function WitnessManagement({
     toast,
     jobId
 }) {
+    const pathname = usePathname();
     const [pendingRename, setPendingRename] = useState({});
     const [confirmModal, setConfirmModal] = useState(null); // { type: 'witness'|'record'|'record-uploading'|'upload-video'|'delete-video', witnessId, recordId }
     const [templateOpen, setTemplateOpen] = useState({});
@@ -63,9 +65,15 @@ export default function WitnessManagement({
             .map((witness) => witness.id)
             .filter(Boolean);
 
-        if (!activeWitnessIds.length || !handleRefreshCompleteVideoStatus) return undefined;
+        const isTaskDetailsPage = Boolean(pathname?.startsWith('/dashboard/task-details'));
+        const isDocumentVisible = typeof document === 'undefined' || document.visibilityState === 'visible';
+
+        if (!activeWitnessIds.length || !handleRefreshCompleteVideoStatus || !isTaskDetailsPage || !isDocumentVisible) {
+            return undefined;
+        }
 
         const intervalId = window.setInterval(() => {
+            if (document.visibilityState !== 'visible') return;
             activeWitnessIds.forEach((witnessId) => {
                 handleRefreshCompleteVideoStatus(witnessId).catch((error) => {
                     console.warn('Failed to refresh complete video status:', error);
@@ -74,7 +82,7 @@ export default function WitnessManagement({
         }, 5000);
 
         return () => window.clearInterval(intervalId);
-    }, [witnesses, handleRefreshCompleteVideoStatus]);
+    }, [witnesses, handleRefreshCompleteVideoStatus, pathname]);
 
     const handleDownloadCompleteVideo = async (e, witness) => {
         e.preventDefault();
@@ -456,7 +464,8 @@ export default function WitnessManagement({
                                         
                                         const videoRecords = allRecords.filter(r => r.video);
                                         
-                                        const allVideosSaved = videoRecords.length === 5 && 
+                                        
+                                        const allVideosSaved = videoRecords.length >= 2 && 
                                             videoRecords.every(r => !!r.backendId && !r.video?.file);
                                         
                                         if (!allVideosSaved || isProcessing) return null;

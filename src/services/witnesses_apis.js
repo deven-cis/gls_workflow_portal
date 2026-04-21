@@ -1,6 +1,19 @@
 import { galloInstance } from './galloInstance';
 import { endpoints } from '@/constants/endpoints';
 export const witnessesAPI = {
+    _normalizeUploadErrorMessage: (message) => {
+        const normalizedMessage = String(message || '').trim();
+        if (!normalizedMessage) {
+            return 'Failed to upload video';
+        }
+
+        if (/ENOSPC|no space left on device|Failed to flush logs to file/i.test(normalizedMessage)) {
+            return 'Server storage is full. Video upload cannot continue right now. Please try again later or contact the administrator.';
+        }
+
+        return normalizedMessage;
+    },
+
     _triggerDirectDownload: (downloadUrl, fileName) => {
         if (typeof window === 'undefined') return false;
         const link = document.createElement('a');
@@ -127,7 +140,7 @@ export const witnessesAPI = {
         });
 
         if (response && response.success === false) {
-            throw new Error(response?.message || 'Failed to initialize video upload');
+            throw new Error(witnessesAPI._normalizeUploadErrorMessage(response?.message || 'Failed to initialize video upload'));
         }
         return response?.result ?? response;
     },
@@ -148,7 +161,7 @@ export const witnessesAPI = {
 
         if (response && response.success === false) {
             witnessesAPI._throwIfAborted(response);
-            throw new Error(response?.message || 'Failed to upload video chunk');
+            throw new Error(witnessesAPI._normalizeUploadErrorMessage(response?.message || 'Failed to upload video chunk'));
         }
         return response?.result ?? response;
     },
@@ -160,7 +173,34 @@ export const witnessesAPI = {
         });
 
         if (response && response.success === false) {
-            throw new Error(response?.message || 'Failed to complete video upload');
+            throw new Error(witnessesAPI._normalizeUploadErrorMessage(response?.message || 'Failed to complete video upload'));
+        }
+        return response?.result ?? response;
+    },
+
+    getMultipartPartUploadUrl: async ({ uploadId, partNumber }) => {
+        const response = await galloInstance(endpoints.witnesses.uploadMultipartPartUrl(), {
+            method: 'POST',
+            body: JSON.stringify({
+                upload_id: uploadId,
+                part_number: partNumber,
+            }),
+        });
+
+        if (response && response.success === false) {
+            throw new Error(witnessesAPI._normalizeUploadErrorMessage(response?.message || 'Failed to prepare video upload part'));
+        }
+        return response?.result ?? response;
+    },
+
+    completeMultipartVideoUpload: async ({ uploadId, parts, durationSeconds = null }) => {
+        const response = await galloInstance(endpoints.witnesses.uploadComplete(), {
+            method: 'POST',
+            body: JSON.stringify({ upload_id: uploadId, parts, duration_seconds: durationSeconds }),
+        });
+
+        if (response && response.success === false) {
+            throw new Error(witnessesAPI._normalizeUploadErrorMessage(response?.message || 'Failed to complete video upload'));
         }
         return response?.result ?? response;
     },
@@ -204,11 +244,59 @@ export const witnessesAPI = {
         return response?.result ?? response;
     },
 
-    uploadVideoInChunks: async (file, { onProgress, onInitialized, onChunkUploaded, signal, uploadId: existingUploadId = null, startChunk = 0, totalChunks: providedTotalChunks = null } = {}) => {
+    uploadVideoDirectToS3Multipart: async (file, { uploadId, totalChunks, startChunk = 0, uploadedParts = [], durationSeconds = null, onProgress, onChunkUploaded, signal } = {}) => {
+        const chunkSize = 50 * 1024 * 1024;
+        const parts = [...uploadedParts];
+
+        for (let chunkNumber = startChunk; chunkNumber < totalChunks; chunkNumber += 1) {
+            const start = chunkNumber * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const chunk = file.slice(start, end);
+            const partNumber = chunkNumber + 1;
+            const partUrl = await witnessesAPI.getMultipartPartUploadUrl({ uploadId, partNumber });
+
+            const uploadResponse = await fetch(partUrl.upload_url, {
+                method: 'PUT',
+                body: chunk,
+                signal,
+            });
+
+            if (!uploadResponse.ok) {
+                throw new Error(`Failed to upload video part ${partNumber}`);
+            }
+
+            const etag = uploadResponse.headers.get('ETag') || uploadResponse.headers.get('etag');
+            if (!etag) {
+                throw new Error('S3 upload part completed, but ETag was not returned. Please check S3 CORS ExposeHeaders for ETag.');
+            }
+
+            const partResult = { part_number: partNumber, etag };
+            parts.push(partResult);
+
+            if (typeof onChunkUploaded === 'function') {
+                onChunkUploaded({
+                    upload_id: uploadId,
+                    received_chunks: chunkNumber + 1,
+                    total_chunks: totalChunks,
+                    upload_strategy: 's3_multipart',
+                    uploaded_parts: [...parts],
+                });
+            }
+
+            if (typeof onProgress === 'function') {
+                onProgress(Math.round(((chunkNumber + 1) / totalChunks) * 100));
+            }
+        }
+
+        return witnessesAPI.completeMultipartVideoUpload({ uploadId, parts, durationSeconds });
+    },
+
+    uploadVideoInChunks: async (file, { onProgress, onInitialized, onChunkUploaded, signal, uploadId: existingUploadId = null, startChunk = 0, totalChunks: providedTotalChunks = null, uploadStrategy = null, uploadedParts = [], durationSeconds = null } = {}) => {
         const chunkSize = 50 * 1024 * 1024;
         const totalChunks = providedTotalChunks ?? Math.max(1, Math.ceil(file.size / chunkSize));
 
         let uploadId = existingUploadId;
+        let strategy = uploadStrategy;
         if (!uploadId) {
             const init = await witnessesAPI.initWitnessVideoUpload({
                 fileName: file.name,
@@ -217,13 +305,30 @@ export const witnessesAPI = {
                 totalChunks,
             });
             uploadId = init?.upload_id;
+            strategy = init?.upload_strategy ?? strategy;
+            if (typeof onInitialized === 'function') {
+                onInitialized(uploadId, init);
+            }
         }
 
         if (!uploadId) {
             throw new Error('Upload ID was not returned by the server');
         }
-        if (typeof onInitialized === 'function') {
+        if (existingUploadId && typeof onInitialized === 'function') {
             onInitialized(uploadId);
+        }
+
+        if (strategy === 's3_multipart') {
+            return witnessesAPI.uploadVideoDirectToS3Multipart(file, {
+                uploadId,
+                totalChunks,
+                startChunk,
+                uploadedParts,
+                durationSeconds,
+                onProgress,
+                onChunkUploaded,
+                signal,
+            });
         }
 
         for (let chunkNumber = startChunk; chunkNumber < totalChunks; chunkNumber += 1) {

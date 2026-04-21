@@ -458,6 +458,8 @@ export const useWitnessManagement = (witnessesData, toast) => {
             controller,
             file,
             uploadId: uploadId ?? existingState.uploadId ?? null,
+            uploadStrategy: existingState.uploadStrategy ?? null,
+            uploadedParts: existingState.uploadedParts ?? [],
             nextChunkIndex: startChunk,
             totalChunks,
             paused: false,
@@ -470,12 +472,16 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 uploadId,
                 startChunk,
                 totalChunks,
-                onInitialized: (initializedUploadId) => {
+                uploadStrategy: existingState.uploadStrategy ?? null,
+                uploadedParts: existingState.uploadedParts ?? [],
+                durationSeconds: localDuration,
+                onInitialized: (initializedUploadId, initResult = null) => {
                     const current = uploadControllersRef.current.get(uploadKey);
                     if (!current) return;
                     uploadControllersRef.current.set(uploadKey, {
                         ...current,
                         uploadId: initializedUploadId,
+                        uploadStrategy: initResult?.upload_strategy ?? current.uploadStrategy,
                     });
                 },
                 onChunkUploaded: (chunkResult) => {
@@ -485,6 +491,8 @@ export const useWitnessManagement = (witnessesData, toast) => {
                         ...current,
                         nextChunkIndex: chunkResult?.received_chunks ?? current.nextChunkIndex,
                         totalChunks: chunkResult?.total_chunks ?? current.totalChunks,
+                        uploadStrategy: chunkResult?.upload_strategy ?? current.uploadStrategy,
+                        uploadedParts: chunkResult?.uploaded_parts ?? current.uploadedParts ?? [],
                     });
                 },
                 onProgress: (progress) => {
@@ -638,7 +646,10 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 ? await pauseUploadSession(uploadState.uploadId)
                 : null;
 
-            const receivedChunks = pauseResult?.received_chunks ?? uploadState?.nextChunkIndex ?? 0;
+            const isDirectS3Upload = uploadState?.uploadStrategy === 's3_multipart';
+            const receivedChunks = isDirectS3Upload
+                ? (uploadState?.nextChunkIndex ?? 0)
+                : (pauseResult?.received_chunks ?? uploadState?.nextChunkIndex ?? 0);
             const totalChunks = pauseResult?.total_chunks ?? uploadState?.totalChunks ?? Math.max(1, Math.ceil((uploadState?.file?.size || record.video.size || 0) / (50 * 1024 * 1024)));
             const progress = totalChunks > 0 ? Math.round((receivedChunks / totalChunks) * 100) : (record.video.uploadProgress ?? 0);
 
@@ -685,7 +696,10 @@ export const useWitnessManagement = (witnessesData, toast) => {
             const resumeResult = uploadState?.uploadId
                 ? await resumeUploadSession(uploadState.uploadId)
                 : null;
-            const startChunk = resumeResult?.received_chunks ?? uploadState?.nextChunkIndex ?? 0;
+            const isDirectS3Upload = uploadState?.uploadStrategy === 's3_multipart';
+            const startChunk = isDirectS3Upload
+                ? (uploadState?.nextChunkIndex ?? 0)
+                : (resumeResult?.received_chunks ?? uploadState?.nextChunkIndex ?? 0);
             const totalChunks = resumeResult?.total_chunks ?? uploadState?.totalChunks ?? Math.max(1, Math.ceil(uploadState.file.size / (50 * 1024 * 1024)));
             const progress = totalChunks > 0 ? Math.round((startChunk / totalChunks) * 100) : 0;
             const resumedVideo = {
@@ -703,6 +717,9 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 uploadId: uploadState.uploadId ?? resumeResult?.upload_id ?? null,
                 startChunk,
                 totalChunks,
+                uploadStrategy: uploadState.uploadStrategy ?? resumeResult?.upload_strategy ?? null,
+                uploadedParts: uploadState.uploadedParts ?? [],
+                durationSeconds: record.video.durationSeconds ?? null,
                 baseVideo: resumedVideo,
                 localDuration: record.video.durationSeconds ?? null,
             });

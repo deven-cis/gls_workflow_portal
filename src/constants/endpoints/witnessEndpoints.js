@@ -9,6 +9,7 @@ export const witnessEndpoints = {
   saveAll: () => '/witnesses/save-all',
   uploadInit: () => '/witnesses/uploads/init',
   uploadChunk: () => '/witnesses/uploads/chunk',
+  uploadMultipartPartUrl: () => '/witnesses/uploads/multipart/part-url',
   uploadComplete: () => '/witnesses/uploads/complete',
   uploadPause: () => '/witnesses/uploads/pause',
   uploadResume: () => '/witnesses/uploads/resume',
