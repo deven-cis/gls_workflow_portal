@@ -272,37 +272,8 @@ export default function HistoryView() {
                 const attorneys = jobDetailsData.attorneys || [];
                 const witnesses = jobDetailsData.witnesses || [];
                 
-                // Flatten witness videos into recordings array - only include videos with file_name and file_path
-                const recordingsPromises = [];
-                witnesses.forEach((witness) => {
-                    const witnessVideos = witness.witness_videos || [];
-                    witnessVideos.forEach((video) => {
-                        // Only process videos that have both file_name and file_path
-                        if (video.file_name && video.file_path) {
-                            const knownSize =
-                                video.file_size !== undefined && video.file_size !== null
-                                    ? Number(video.file_size)
-                                    : null;
-                            recordingsPromises.push(
-                                Promise.resolve(knownSize).then(size => ({
-                                    videoId: video.id ?? null,
-                                    name: witness.witness_name,
-                                    fileName: video.file_name,
-                                    filePath: video.file_path,
-                                    startTime: video.start_time,
-                                    endTime: video.end_time,
-                                    size: size // Size in bytes, will be formatted in display
-                                }))
-                            );
-                        }
-                    });
-                });
-                
-                // Wait for all size fetches to complete
-                const recordings = await Promise.all(recordingsPromises);
-                
                 const jobDetails = {
-                    jobNo: jobNo, // Add job number for download all functionality
+                    jobNo: jobNo,
                     jobTitle: item.title,
                     location: item.location,
                     time: `${item.date} ${item.time}`,
@@ -312,10 +283,8 @@ export default function HistoryView() {
                         name: a.attorney_name || 'N/A',
                         firm: a.firm_name || 'N/A'
                     })),
-                    witnesses: witnesses.map(w => ({
-                        name: w.witness_name || 'N/A'
-                    })),
-                    recordings: recordings
+                    witnesses: witnesses,
+                    recordings: []
                 };
                 
                 setSelectedJob(jobDetails);
