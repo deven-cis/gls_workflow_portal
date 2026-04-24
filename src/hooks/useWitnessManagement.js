@@ -12,6 +12,55 @@ export const useWitnessManagement = (witnessesData, toast) => {
     const params = useParams();
     const searchParams = useSearchParams();
     const uploadControllersRef = useRef(new Map());
+    const savedWitnessStateRef = useRef({});
+
+    const cloneVideo = useCallback((video) => {
+        if (!video) return null;
+        return { ...video };
+    }, []);
+
+    const cloneRecord = useCallback((record) => ({
+        ...record,
+        video: cloneVideo(record?.video),
+        _originalVideo: cloneVideo(record?._originalVideo),
+    }), [cloneVideo]);
+
+    const cloneRecords = useCallback((records = []) => (
+        Array.isArray(records) ? records.map((record) => cloneRecord(record)) : []
+    ), [cloneRecord]);
+
+    const cloneTemplate = useCallback((template = {}) => ({ ...(template || {}) }), []);
+
+    const updateSavedWitnessState = useCallback((witnessId, { records, template } = {}) => {
+        if (!witnessId) return;
+        savedWitnessStateRef.current[witnessId] = {
+            records: cloneRecords(records || []),
+            template: cloneTemplate(template || {}),
+        };
+    }, [cloneRecords, cloneTemplate]);
+
+    const restoreSavedWitnessState = useCallback((witnessId) => {
+        const savedState = savedWitnessStateRef.current[witnessId] || {
+            records: [],
+            template: {},
+        };
+
+        setWitnessRecords((prev) => ({
+            ...prev,
+            [witnessId]: cloneRecords(savedState.records),
+        }));
+        setWitnessTemplates((prev) => ({
+            ...prev,
+            [witnessId]: cloneTemplate(savedState.template),
+        }));
+        setDeletedWitnessVideoIds((prev) => {
+            const next = { ...prev };
+            if (next[witnessId]) {
+                delete next[witnessId];
+            }
+            return next;
+        });
+    }, [cloneRecords, cloneTemplate]);
 
     const pauseUploadSession = useCallback((uploadId) => {
         if (!uploadId) return Promise.resolve(null);
@@ -35,6 +84,21 @@ export const useWitnessManagement = (witnessesData, toast) => {
             console.warn('Failed to cancel witness video upload on backend:', error);
         });
     }, []);
+
+    const clearWitnessUploadControllers = useCallback((witnessId) => {
+        const prefix = `${witnessId}:`;
+        const uploadEntries = Array.from(uploadControllersRef.current.entries());
+        uploadEntries.forEach(([key, uploadState]) => {
+            if (!key.startsWith(prefix)) return;
+            if (uploadState?.controller) {
+                uploadState.controller.abort();
+            }
+            if (uploadState?.uploadId) {
+                cancelUploadSession(uploadState.uploadId);
+            }
+            uploadControllersRef.current.delete(key);
+        });
+    }, [cancelUploadSession]);
 
     const extractLocalVideoDuration = useCallback(async (file) => {
         if (typeof window === 'undefined' || !file) return null;
@@ -247,6 +311,31 @@ export const useWitnessManagement = (witnessesData, toast) => {
         });
     }, [witnessesData, mapWitnessSummary, mapWitnessVideoRecord]);
 
+    useEffect(() => {
+        if (!Array.isArray(witnessesData)) return;
+
+        witnessesData.forEach((raw) => {
+            const witnessId = raw.id ?? raw.witness_id ?? raw.uuid;
+            if (witnessId == null) return;
+
+            const vids = raw.witness_vid ?? raw.witness_videos ?? raw.videos ?? [];
+            const processedVideos = Array.isArray(vids)
+                ? vids.map((video, idx) => mapWitnessVideoRecord(video, witnessId, idx))
+                : [];
+            const template = {
+                readOnText: raw.read_on_text ?? raw.readOnText ?? '',
+                readOnTime: raw.read_on_time ?? raw.readOnTime ?? '',
+                readOffText: raw.read_off_text ?? raw.readOffText ?? '',
+                readOffTime: raw.read_off_time ?? raw.readOffTime ?? '',
+            };
+
+            updateSavedWitnessState(witnessId, {
+                records: processedVideos,
+                template,
+            });
+        });
+    }, [mapWitnessVideoRecord, updateSavedWitnessState, witnessesData]);
+
     // Handle add witness
     const handleAddWitness = useCallback(async () => {
         const name = (newWitnessName ?? '').toString().trim();
@@ -353,6 +442,16 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 };
             });
 
+            updateSavedWitnessState(newId, {
+                records: [],
+                template: res ? {
+                    readOnText: res?.read_on_text ?? res?.readOnText ?? '',
+                    readOnTime: res?.read_on_time ?? res?.readOnTime ?? '',
+                    readOffText: res?.read_off_text ?? res?.readOffText ?? '',
+                    readOffTime: res?.read_off_time ?? res?.readOffTime ?? '',
+                } : {},
+            });
+
             setNewWitnessName('');
             setAddingWitness(false);
             setExpandedWitness(newId);
@@ -360,7 +459,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
             console.error('Failed to create witness:', err);
             toast?.error?.(err?.message || 'Failed to create witness');
         }
-    }, [newWitnessName, searchParams, params, toast]);
+    }, [newWitnessName, searchParams, params, toast, updateSavedWitnessState]);
 
     // Handle rename witness
     const handleRenameWitness = useCallback(async (witnessId, newName) => {
@@ -404,6 +503,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 delete next[witnessId];
                 return next;
             });
+            delete savedWitnessStateRef.current[witnessId];
             setExpandedWitness(null);
         } catch (err) {
             console.error('Failed to archive witness:', err);
@@ -419,15 +519,13 @@ export const useWitnessManagement = (witnessesData, toast) => {
             return;
         }
 
-        setWitnessRecords((prev) => {
-            return {
-                ...prev,
-                [witnessId]: [
-                    ...(prev[witnessId] || []),
-                    { id: Date.now(), startTime: '', endTime: '', video: null }
-                ]
-            };
-        });
+        setWitnessRecords((prev) => ({
+            ...prev,
+            [witnessId]: [
+                ...(prev[witnessId] || []),
+                { id: Date.now(), startTime: '', endTime: '', video: null }
+            ]
+        }));
     }, [toast, witnessRecords]);
 
     // Handle update record
@@ -436,7 +534,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
             ...prev,
             [witnessId]: (prev[witnessId] || []).map((r) =>
                 r.id === recordId ? { ...r, [field]: value } : r
-            ).sort((a, b) => (a.id || 0) - (b.id || 0))
+            )
         }));
     }, []);
 
@@ -738,14 +836,16 @@ export const useWitnessManagement = (witnessesData, toast) => {
     // Handle delete record
     const handleDeleteRecord = useCallback((witnessId, recordId) => {
         const record = (witnessRecords[witnessId] || []).find((r) => r.id === recordId);
-            if (record?.video?.uploadStatus === 'uploading') {
-                const uploadKey = `${witnessId}:${recordId}`;
-                const uploadState = uploadControllersRef.current.get(uploadKey);
-                if (uploadState?.controller) {
-                    uploadState.controller.abort();
-                    cancelUploadSession(uploadState.uploadId);
-                uploadControllersRef.current.delete(uploadKey);
+        if (record?.video?.uploadStatus === 'uploading' || record?.video?.uploadStatus === 'paused') {
+            const uploadKey = `${witnessId}:${recordId}`;
+            const uploadState = uploadControllersRef.current.get(uploadKey);
+            if (uploadState?.controller) {
+                uploadState.controller.abort();
             }
+            if (uploadState?.uploadId) {
+                cancelUploadSession(uploadState.uploadId);
+            }
+            uploadControllersRef.current.delete(uploadKey);
         }
 
         setWitnessRecords((prev) => {
@@ -1035,10 +1135,39 @@ export const useWitnessManagement = (witnessesData, toast) => {
                         next[witnessId] = sortedVideos;
                         return next;
                     });
+
+                    updateSavedWitnessState(witnessId, {
+                        records: processedVideos,
+                        template: {
+                            readOnText: saved?.read_on_text ?? template?.readOnText ?? '',
+                            readOnTime: saved?.read_on_time ?? template?.readOnTime ?? '',
+                            readOffText: saved?.read_off_text ?? template?.readOffText ?? '',
+                            readOffTime: saved?.read_off_time ?? template?.readOffTime ?? '',
+                        },
+                    });
+                } else {
+                    updateSavedWitnessState(witnessId, {
+                        records: activeRecords,
+                        template: {
+                            readOnText: saved?.read_on_text ?? template?.readOnText ?? '',
+                            readOnTime: saved?.read_on_time ?? template?.readOnTime ?? '',
+                            readOffText: saved?.read_off_text ?? template?.readOffText ?? '',
+                            readOffTime: saved?.read_off_time ?? template?.readOffTime ?? '',
+                        },
+                    });
                 }
             } catch (e) {
                 // If refresh fails, keep local state; next page refresh will reconcile.
                 console.warn('Failed to refresh witness list after save:', e);
+                updateSavedWitnessState(witnessId, {
+                    records: activeRecords,
+                    template: {
+                        readOnText: saved?.read_on_text ?? template?.readOnText ?? '',
+                        readOnTime: saved?.read_on_time ?? template?.readOnTime ?? '',
+                        readOffText: saved?.read_off_text ?? template?.readOffText ?? '',
+                        readOffTime: saved?.read_off_time ?? template?.readOffTime ?? '',
+                    },
+                });
             }
         } catch (err) {
             console.error('Failed to save witness/videos:', err);
@@ -1051,7 +1180,7 @@ export const useWitnessManagement = (witnessesData, toast) => {
                 return next;
             });
         }
-    }, [witnesses, deletedWitnessVideoIds, searchParams, params, toast, mapWitnessVideoRecord, applyWitnessMergeState]);
+    }, [witnesses, deletedWitnessVideoIds, searchParams, params, toast, mapWitnessVideoRecord, applyWitnessMergeState, updateSavedWitnessState]);
 
     const handleRequestCompleteVideoMerge = useCallback(async (witnessId) => {
         const result = await witnessesAPI.requestWitnessCompleteVideoMerge(witnessId);
@@ -1103,31 +1232,10 @@ export const useWitnessManagement = (witnessesData, toast) => {
         handleRefreshCompleteVideoStatus,
         handleDownloadWitnessCompleteVideo,
         
-        // Cancel handler to restore deleted videos
+        // Cancel handler to restore the last saved witness state
         handleCancelWitness: useCallback((witnessId) => {
-            // Restore videos that were deleted (have _originalVideo)
-            setWitnessRecords((prev) => {
-                const records = prev[witnessId] || [];
-                return {
-                    ...prev,
-                    [witnessId]: records.map((r) => {
-                        if (r._originalVideo) {
-                            const { _originalVideo, _originalBackendId, ...rest } = r;
-                            // Restore both video and backendId
-                            return { ...rest, video: _originalVideo, backendId: _originalBackendId ?? rest.backendId };
-                        }
-                        return r;
-                    }),
-                };
-            });
-            // Clear deleted video IDs for this witness
-            setDeletedWitnessVideoIds((prev) => {
-                const next = { ...prev };
-                if (next[witnessId]) {
-                    delete next[witnessId];
-                }
-                return next;
-            });
-        }, []),
+            clearWitnessUploadControllers(witnessId);
+            restoreSavedWitnessState(witnessId);
+        }, [clearWitnessUploadControllers, restoreSavedWitnessState]),
     };
 };
